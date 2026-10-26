@@ -1,19 +1,23 @@
 name: Correos Myfinance
 
 # Horas en UTC (Colombia = UTC-5, sin horario de verano):
-#   13:00 UTC = 8:00 a. m.   19:00 UTC = 2:00 p. m.   01:00 UTC = 8:00 p. m.
+#   13:00 UTC = 8:00 a. m.   15:00 UTC = 10:00 a. m.   19:00 UTC = 2:00 p. m.   01:00 UTC = 8:00 p. m.
+#   domingo 23:00 UTC = 6:00 p. m.   día 1, 14:00 UTC = 9:00 a. m.
 on:
   schedule:
     - cron: '0 13 * * *'
+    - cron: '0 15 * * *'
     - cron: '0 19 * * *'
     - cron: '0 1 * * *'
+    - cron: '0 23 * * 0'
+    - cron: '0 14 1 * *'
     - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       mode:
-        description: 'welcome, morning, afternoon o night'
+        description: 'frequent, welcome, morning, afternoon, night, miss, weekly o monthly'
         required: true
-        default: 'welcome'
+        default: 'frequent'
 
 concurrency:
   group: correos
@@ -35,15 +39,17 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
-          EVENT: ${{ github.event_name }}
           SCHEDULE: ${{ github.event.schedule }}
           INPUT_MODE: ${{ github.event.inputs.mode }}
         run: |
           case "$SCHEDULE" in
             "0 13 * * *") MODE=morning ;;
+            "0 15 * * *") MODE=miss ;;
             "0 19 * * *") MODE=afternoon ;;
             "0 1 * * *") MODE=night ;;
-            *) MODE="${INPUT_MODE:-welcome}" ;;
+            "0 23 * * 0") MODE=weekly ;;
+            "0 14 1 * *") MODE=monthly ;;
+            *) MODE="${INPUT_MODE:-frequent}" ;;
           esac
           echo "Modo: $MODE"
           node send.js "$MODE"
