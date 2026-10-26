@@ -47,12 +47,14 @@ function streakEnding(days, endKey) {
   return n
 }
 
-function layout(inner) {
+const OFF_NOTE = 'Puedes apagar estos correos en Más → Ajustes → Recordatorios por correo.'
+
+function layout(inner, footer = OFF_NOTE) {
   return `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;color:#111">
     <h2 style="color:#e5253b;margin:0 0 4px">Myfinance</h2>
     ${inner}
     <p style="margin:20px 0"><a href="${APP_URL}" style="background:#e5253b;color:#fff;padding:12px 20px;border-radius:12px;text-decoration:none;font-weight:bold">Abrir Myfinance</a></p>
-    <p style="color:#888;font-size:12px">Puedes apagar estos correos en Más → Ajustes → Recordatorios por correo.</p>
+    <p style="color:#888;font-size:12px">${footer}</p>
   </div>`
 }
 
@@ -223,6 +225,35 @@ async function groupNews(notifyDocs) {
   console.log(`Metas en grupo: ${sent} correo(s) enviados`)
 }
 
+/* ───────────── Correos redactados por el admin en su panel (colección outbox) ───────────── */
+async function processOutbox() {
+  const pending = await db.collection('outbox').where('status', '==', 'pending').get()
+  for (const job of pending.docs) {
+    const o = job.data()
+    // Se marca antes de enviar: si algo falla a medias, no se reenvía a quienes ya lo recibieron
+    if (!DRY) await job.ref.update({ status: 'sending' })
+    let people
+    if (o.audience === 'me') people = [{ email: ADMIN_EMAIL, name: 'Admin' }]
+    else if (o.audience === 'reminders') people = (await loadNotify()).map((x) => x.data())
+    else people = (await db.collection('members').get()).docs.map((x) => x.data())
+    const seen = new Set()
+    let sent = 0
+    for (const p of people) {
+      if (!p.email || seen.has(p.email)) continue
+      seen.add(p.email)
+      const text = esc(o.body).replace(/\r?\n/g, '<br>')
+      try {
+        await sendMail(p.email, p.name, o.subject, layout(`<p style="margin:0 0 12px">Hola ${firstName(p.name)},</p><p style="margin:0;line-height:1.6">${text}</p>`, 'Recibes este correo porque eres parte de Myfinance.'))
+        sent++
+      } catch (e) {
+        console.error('No se pudo enviar el correo del admin', p.email, String(e))
+      }
+    }
+    if (!DRY) await job.ref.update({ status: 'sent', sent, sentAt: admin.firestore.FieldValue.serverTimestamp() })
+    console.log(`Correo del admin «${o.subject}»: ${sent} de ${seen.size}`)
+  }
+}
+
 async function frequent() {
   const docs = await loadNotify()
   for (const [label, fn] of [
@@ -230,6 +261,7 @@ async function frequent() {
     ['budgets', () => budgetAlerts(docs)],
     ['streak', () => streakCheers(docs)],
     ['groups', () => groupNews(docs)],
+    ['outbox', () => processOutbox()],
   ]) {
     await fn().catch((e) => console.error(`Falló ${label}`, String(e)))
   }
