@@ -1,0 +1,49 @@
+name: Correos Myfinance
+
+# Horas en UTC (Colombia = UTC-5, sin horario de verano):
+#   13:00 UTC = 8:00 a. m.   19:00 UTC = 2:00 p. m.   01:00 UTC = 8:00 p. m.
+on:
+  schedule:
+    - cron: '0 13 * * *'
+    - cron: '0 19 * * *'
+    - cron: '0 1 * * *'
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'welcome, morning, afternoon o night'
+        required: true
+        default: 'welcome'
+
+concurrency:
+  group: correos
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci || npm install
+      - name: Enviar
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          EVENT: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_MODE: ${{ github.event.inputs.mode }}
+        run: |
+          case "$SCHEDULE" in
+            "0 13 * * *") MODE=morning ;;
+            "0 19 * * *") MODE=afternoon ;;
+            "0 1 * * *") MODE=night ;;
+            *) MODE="${INPUT_MODE:-welcome}" ;;
+          esac
+          echo "Modo: $MODE"
+          node send.js "$MODE"
