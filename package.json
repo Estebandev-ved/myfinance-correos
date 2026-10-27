@@ -2,9 +2,14 @@
   "name": "myfinance-correos",
   "private": true,
   "description": "Correos de Myfinance (bienvenida y recordatorios) ejecutados por GitHub Actions",
-  "engines": { "node": ">=20" },
-  "scripts": { "welcome": "node send.js welcome" },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "welcome": "node send.js welcome"
+  },
   "dependencies": {
-    "firebase-admin": "^13.0.0"
+    "firebase-admin": "^13.0.0",
+    "web-push": "^3.6.7"
   }
 }

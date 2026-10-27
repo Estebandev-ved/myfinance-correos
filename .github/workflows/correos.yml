@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'frequent, welcome, morning, afternoon, night, miss, weekly o monthly'
+        description: 'frequent, welcome, morning, afternoon, night, miss, weekly, monthly o pushupdate'
         required: true
         default: 'frequent'
 
@@ -38,6 +38,7 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           SCHEDULE: ${{ github.event.schedule }}
           INPUT_MODE: ${{ github.event.inputs.mode }}

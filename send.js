@@ -8,12 +8,15 @@
  *   node send.js miss        10:00 "te extrañamos" a quien lleva 3 y 7 días sin abrir la app
  *   node send.js weekly      domingos 18:00 resumen de la semana
  *   node send.js monthly     día 1, 9:00 cierre del mes anterior
+ *   node send.js pushupdate  aviso push "hay una versión nueva" a todos los dispositivos con avisos activados
  *
- * Variables: FIREBASE_SERVICE_ACCOUNT (JSON de la llave), BREVO_API_KEY, SENDER_EMAIL, ADMIN_EMAIL (opcional).
+ * Variables: FIREBASE_SERVICE_ACCOUNT (JSON de la llave), BREVO_API_KEY, SENDER_EMAIL, ADMIN_EMAIL (opcional),
+ * VAPID_PRIVATE_KEY (solo para los avisos push).
  * Solo lee `notify`, `members` y las metas en grupo; nunca toca los respaldos. Todo lo que se manda a un
  * amigo (menos la bienvenida) exige que él haya activado "Recordatorios por correo".
  */
 const admin = require('firebase-admin')
+const webpush = require('web-push')
 
 const { FIREBASE_SERVICE_ACCOUNT, BREVO_API_KEY, SENDER_EMAIL } = process.env
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'grubiano23@gmail.com'
@@ -225,11 +228,60 @@ async function groupNews(notifyDocs) {
   console.log(`Metas en grupo: ${sent} correo(s) enviados`)
 }
 
+/* ───────────── Avisos push al celular ───────────── */
+// Clave pública VAPID: la misma que usa la app (src/lib/push.ts). La privada va en el secreto VAPID_PRIVATE_KEY.
+const VAPID_PUBLIC = 'BKSYQNqfALcnOlyS3l8abnVdg8o0B6tcy4QwFlKM6R2s604I3JRAJ0NFhCC8WZYx4ERqNUEIfM75D025QfLTd-Q'
+
+/** Manda una notificación a todos los dispositivos que activaron los avisos. Devuelve a cuántos llegó. */
+async function sendPush({ title, body, url = '/' }) {
+  if (!process.env.VAPID_PRIVATE_KEY) throw new Error('Falta el secreto VAPID_PRIVATE_KEY para enviar avisos push')
+  webpush.setVapidDetails(`mailto:${ADMIN_EMAIL}`, VAPID_PUBLIC, process.env.VAPID_PRIVATE_KEY)
+  const subs = await db.collection('pushSubs').get()
+  const seen = new Set()
+  let sent = 0
+  for (const doc of subs.docs) {
+    let sub
+    try {
+      sub = JSON.parse(doc.data().sub)
+    } catch {
+      continue
+    }
+    if (!sub?.endpoint || seen.has(sub.endpoint)) continue
+    seen.add(sub.endpoint)
+    if (DRY) {
+      console.log(`[DRY] push a ${doc.id}: ${title}`)
+      sent++
+      continue
+    }
+    try {
+      await webpush.sendNotification(sub, JSON.stringify({ title, body, url, tag: 'myfinance-update' }), { TTL: 60 * 60 * 24, urgency: 'high' })
+      sent++
+    } catch (e) {
+      // 404/410: el dispositivo ya no recibe avisos (desinstaló la app o los apagó)
+      if (e.statusCode === 404 || e.statusCode === 410) await doc.ref.delete().catch(() => undefined)
+      else console.error('No se pudo enviar el push', doc.id, String(e.statusCode || e))
+    }
+  }
+  console.log(`Push «${title}»: ${sent} de ${subs.size} dispositivos`)
+  return sent
+}
+
 /* ───────────── Correos redactados por el admin en su panel (colección outbox) ───────────── */
 async function processOutbox() {
   const pending = await db.collection('outbox').where('status', '==', 'pending').get()
   for (const job of pending.docs) {
     const o = job.data()
+    if (o.channel === 'push') {
+      if (!DRY) await job.ref.update({ status: 'sending' })
+      let n = 0
+      try {
+        n = await sendPush({ title: o.subject, body: o.body })
+      } catch (e) {
+        console.error('Falló el aviso push', String(e))
+      }
+      if (!DRY) await job.ref.update({ status: 'sent', sent: n, sentAt: admin.firestore.FieldValue.serverTimestamp() })
+      continue
+    }
     // Se marca antes de enviar: si algo falla a medias, no se reenvía a quienes ya lo recibieron
     if (!DRY) await job.ref.update({ status: 'sending' })
     let people
@@ -381,7 +433,7 @@ async function monthly() {
   })
 }
 
-const JOBS = { frequent, welcome, morning: () => remind('morning'), afternoon: () => remind('afternoon'), night: () => remind('night'), miss, weekly, monthly }
+const JOBS = { pushupdate: () => sendPush({ title: 'Hay una versión nueva de Myfinance', body: 'Ábrela para actualizar y ver las mejoras.' }), frequent, welcome, morning: () => remind('morning'), afternoon: () => remind('afternoon'), night: () => remind('night'), miss, weekly, monthly }
 const mode = process.argv[2]
 const run = JOBS[mode] ? JOBS[mode]() : Promise.reject(new Error(`Modo desconocido: ${mode}`))
 run.then(() => process.exit(0), (e) => {
