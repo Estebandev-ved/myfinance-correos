@@ -96,7 +96,7 @@ async function forEachPerson(label, docs, fn) {
     const d = doc.data()
     if (!d.email) continue
     try {
-      const mail = await fn(d)
+      const mail = await fn(d, doc.id)
       if (!mail) continue
       await sendMail(d.email, d.name, mail.subject, mail.html)
       if (!DRY) await doc.ref.set(mail.mark, { merge: true })
@@ -266,6 +266,34 @@ async function sendPush({ title, body, url = '/' }) {
   return sent
 }
 
+/** Aviso push a los dispositivos de UNA persona. Si no hay clave VAPID o no activó los avisos, no hace nada. */
+async function pushToUid(uid, { title, body, url = '/' }) {
+  if (DRY) return console.log(`[DRY] push a ${uid}: ${title}`)
+  if (!process.env.VAPID_PRIVATE_KEY) return 0
+  webpush.setVapidDetails(`mailto:${ADMIN_EMAIL}`, VAPID_PUBLIC, process.env.VAPID_PRIVATE_KEY)
+  const subs = await db.collection('pushSubs').where('uid', '==', uid).get()
+  const seen = new Set()
+  let sent = 0
+  for (const doc of subs.docs) {
+    let sub
+    try {
+      sub = JSON.parse(doc.data().sub)
+    } catch {
+      continue
+    }
+    if (!sub?.endpoint || seen.has(sub.endpoint)) continue
+    seen.add(sub.endpoint)
+    try {
+      await webpush.sendNotification(sub, JSON.stringify({ title, body, url, tag: 'myfinance-streak' }), { TTL: 60 * 60 * 6, urgency: 'normal' })
+      sent++
+    } catch (e) {
+      if (e.statusCode === 404 || e.statusCode === 410) await doc.ref.delete().catch(() => undefined)
+      else console.error('No se pudo enviar el push personal', uid, String(e.statusCode || e))
+    }
+  }
+  return sent
+}
+
 /* ───────────── Correos redactados por el admin en su panel (colección outbox) ───────────── */
 async function processOutbox() {
   const pending = await db.collection('outbox').where('status', '==', 'pending').get()
@@ -362,12 +390,15 @@ const SLOTS = {
 async function remind(slot) {
   const cfg = SLOTS[slot]
   const today = dayKey(Date.now())
-  await forEachPerson(`Recordatorio ${slot}`, await loadNotify(), (d) => {
+  await forEachPerson(`Recordatorio ${slot}`, await loadNotify(), async (d, uid) => {
     // Ya enviado este turno hoy, o la app lleva más de 2 semanas sin abrirse (no insistimos)
     if (d.sent?.[slot] === today || !fresh(d)) return null
     if (cfg.skipIfRegistered && d.lastTxAt && dayKey(d.lastTxAt) === today) return null
     const items = Array.isArray(d.items) ? d.items : []
-    const { subject, html } = cfg.build(firstName(d.name), items, streakEnding(daysOf(d), shiftDay(today, -1)))
+    const streak = streakEnding(daysOf(d), shiftDay(today, -1))
+    const { subject, html } = cfg.build(firstName(d.name), items, streak)
+    // De noche, con racha viva y nada anotado hoy, además del correo va un aviso al celular
+    if (slot === 'night' && streak >= 2) await pushToUid(uid, { title: `🔥 Tu racha de ${streak} días corre peligro`, body: 'Anota un gasto pequeño y sigue viva.', url: '/nuevo' })
     return { subject, html, mark: { sent: { [slot]: today } } }
   })
 }
