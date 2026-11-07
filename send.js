@@ -7,6 +7,8 @@
  *   node send.js night       20:00 "cierra tu día"  (solo si no ha registrado hoy; avisa si la racha corre peligro)
  *   node send.js miss        10:00 inactividad: avisos a los 7, 14, 21 y 27 días sin abrir la app; a los 30 se libera el cupo
  *                            (solo si RELEASE_SEATS=1; sin esa variable es un ensayo que le avisa al admin). Ver inactivity.js
+ *   node send.js pollstats   suma las preguntas de un toque y publica los resultados (≥ 5 respuestas) para la web;
+ *                            también corre a diario dentro de `miss`
  *   node send.js weekly      domingos 18:00 resumen de la semana
  *   node send.js monthly     día 1, 9:00 cierre del mes anterior
  *   node send.js pushupdate  aviso push "hay una versión nueva" a todos los dispositivos con avisos activados
@@ -443,6 +445,30 @@ async function inactivity() {
   console.log(`Inactividad: ${sent} aviso(s), ${reset} que volvieron, ${toRelease.length} cupo(s) ${RELEASE ? 'liberados' : 'por liberar (ensayo)'} de ${members.size} miembros`)
 }
 
+/* ───────────── Resultados de las preguntas de un toque, para la web ─────────────
+ * Suma las respuestas de polls/ y publica pollStats/summary SOLO con las preguntas que ya tienen POLL_MIN respuestas o más
+ * (así no se muestra un porcentaje de 2 personas). Sin nombres ni respuestas individuales. La web lo lee sin iniciar sesión. */
+const POLL_MIN = 5
+async function pollStats() {
+  const snap = await db.collection('polls').get()
+  const by = {}
+  for (const doc of snap.docs) {
+    const { poll, value } = doc.data()
+    if (!poll || !['yes', 'mid', 'no'].includes(value)) continue
+    const g = (by[poll] ??= { yes: 0, mid: 0, no: 0, n: 0 })
+    g[value]++
+    g.n++
+  }
+  const published = Object.fromEntries(Object.entries(by).filter(([, g]) => g.n >= POLL_MIN))
+  if (!DRY) await db.collection('pollStats').doc('summary').set({ polls: published, at: admin.firestore.FieldValue.serverTimestamp() })
+  console.log(`Encuestas: ${snap.size} respuestas, ${Object.keys(published).length} pregunta(s) publicadas en la web`)
+}
+
+/** Lo diario de las 10:00: inactividad y resultados de encuestas (si una falla, la otra sigue). */
+async function daily() {
+  for (const [label, fn] of [['inactividad', inactivity], ['encuestas', pollStats]]) await fn().catch((e) => console.error(`Falló ${label}`, String(e)))
+}
+
 /* ───────────── Resumen semanal ───────────── */
 async function weekly() {
   const today = dayKey(Date.now())
@@ -475,7 +501,7 @@ async function monthly() {
   })
 }
 
-const JOBS = { pushupdate: () => sendPush({ title: 'Hay una versión nueva de Myfinance', body: 'Ábrela para actualizar y ver las mejoras.' }), frequent, welcome, morning: () => remind('morning'), afternoon: () => remind('afternoon'), night: () => remind('night'), miss: inactivity, weekly, monthly }
+const JOBS = { pushupdate: () => sendPush({ title: 'Hay una versión nueva de Myfinance', body: 'Ábrela para actualizar y ver las mejoras.' }), frequent, welcome, morning: () => remind('morning'), afternoon: () => remind('afternoon'), night: () => remind('night'), miss: daily, pollstats: pollStats, weekly, monthly }
 const mode = process.argv[2]
 const run = JOBS[mode] ? JOBS[mode]() : Promise.reject(new Error(`Modo desconocido: ${mode}`))
 run.then(() => process.exit(0), (e) => {
