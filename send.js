@@ -5,7 +5,8 @@
  *   node send.js morning     8:00  pendientes del día
  *   node send.js afternoon   14:00 "¿ya anotaste?" (solo si no ha registrado hoy)
  *   node send.js night       20:00 "cierra tu día"  (solo si no ha registrado hoy; avisa si la racha corre peligro)
- *   node send.js miss        10:00 "te extrañamos" a quien lleva 3 y 7 días sin abrir la app
+ *   node send.js miss        10:00 inactividad: avisos a los 7, 14, 21 y 27 días sin abrir la app; a los 30 se libera el cupo
+ *                            (solo si RELEASE_SEATS=1; sin esa variable es un ensayo que le avisa al admin). Ver inactivity.js
  *   node send.js weekly      domingos 18:00 resumen de la semana
  *   node send.js monthly     día 1, 9:00 cierre del mes anterior
  *   node send.js pushupdate  aviso push "hay una versión nueva" a todos los dispositivos con avisos activados
@@ -17,6 +18,9 @@
  */
 const admin = require('firebase-admin')
 const webpush = require('web-push')
+// El diseño de los correos vive aparte (ver mail-templates.js y mail-ui.js); aquí solo se decide a quién y cuándo
+const T = require('./mail-templates')
+const { esc } = require('./mail-ui')
 
 const { FIREBASE_SERVICE_ACCOUNT, BREVO_API_KEY, SENDER_EMAIL } = process.env
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'grubiano23@gmail.com'
@@ -34,13 +38,11 @@ const APP_URL = 'https://myfinance-gr23.web.app'
 const TZ = 'America/Bogota'
 const DAY = 86_400_000
 const STALE_AFTER_MS = 14 * DAY
-const MILESTONES = [3, 7, 14, 30, 60, 100, 200, 365]
+const { MILESTONES, money } = T
+const { decide } = require('./inactivity')
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 const dayKey = (ms) => new Date(ms).toLocaleDateString('en-CA', { timeZone: TZ })
 const shiftDay = (key, n) => new Date(new Date(`${key}T00:00:00Z`).getTime() + n * DAY).toISOString().slice(0, 10)
-const firstName = (n) => esc(String(n || 'amigo').trim().split(/\s+/)[0])
-const money = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0)
 const monthName = (key) => new Date(`${key}-15T12:00:00Z`).toLocaleDateString('es-CO', { month: 'long', timeZone: 'UTC' })
 
 /** Días seguidos que terminan en `endKey` (cuenta hacia atrás mientras haya registros) */
@@ -49,28 +51,6 @@ function streakEnding(days, endKey) {
   for (let k = endKey; days.has(k); k = shiftDay(k, -1)) n++
   return n
 }
-
-const OFF_NOTE = 'Puedes apagar estos correos en Más → Ajustes → Recordatorios por correo.'
-
-function layout(inner, footer = OFF_NOTE) {
-  return `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;color:#111">
-    <h2 style="color:#e5253b;margin:0 0 4px">Myfinance</h2>
-    ${inner}
-    <p style="margin:20px 0"><a href="${APP_URL}" style="background:#e5253b;color:#fff;padding:12px 20px;border-radius:12px;text-decoration:none;font-weight:bold">Abrir Myfinance</a></p>
-    <p style="color:#888;font-size:12px">${footer}</p>
-  </div>`
-}
-
-function rows(items) {
-  const html = items
-    .map((i) => `<tr><td style="padding:10px 0;border-bottom:1px solid #eee"><b style="color:${i.level === 'late' ? '#d62839' : '#b36b00'}">${esc(i.title)}</b><br><span style="color:#666;font-size:13px">${esc(i.detail)}</span></td></tr>`)
-    .join('')
-  return html ? `<table style="width:100%;border-collapse:collapse;margin-top:12px">${html}</table>` : ''
-}
-
-const stat = (label, value, color = '#111') =>
-  `<tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#666">${esc(label)}</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;font-weight:bold;color:${color}">${esc(value)}</td></tr>`
-const statTable = (list) => `<table style="width:100%;border-collapse:collapse;margin-top:12px">${list.join('')}</table>`
 
 // DRY_RUN=1: solo muestra qué se enviaría, sin enviar ni marcar nada
 const DRY = process.env.DRY_RUN === '1'
@@ -116,23 +96,12 @@ async function welcome() {
     const m = doc.data()
     if (m.welcomedAt || !m.email) continue
     try {
-      await sendMail(
-        m.email,
-        m.name,
-        '¡Bienvenido a Myfinance!',
-        layout(`<p style="margin:0 0 12px">Hola ${firstName(m.name)}, ya eres parte de Myfinance. 🎉</p>
-          <p style="margin:0 0 8px">Para empezar con el pie derecho:</p>
-          <ol style="margin:0;padding-left:20px;line-height:1.7">
-            <li>Registra tus movimientos del día (toma 10 segundos).</li>
-            <li>Ponle un tope a tus gastos en <b>Presupuesto</b>.</li>
-            <li>Crea una meta de ahorro y mira cómo crece.</li>
-            <li>Activa los <b>recordatorios por correo</b> en Más → Ajustes para no olvidarte de anotar.</li>
-          </ol>
-          <p style="margin:12px 0 0;color:#666;font-size:13px">Tip: instálala en tu celular desde el menú del navegador → "Agregar a pantalla de inicio".</p>`),
-      )
+      const mail = T.welcomeMail(m)
+      await sendMail(m.email, m.name, mail.subject, mail.html)
       // Se marca primero: si el aviso al admin falla, no se le repite la bienvenida al amigo
       if (!DRY) await doc.ref.set({ welcomedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
-      await sendMail(ADMIN_EMAIL, 'Admin', `Myfinance: se unió ${m.name || m.email}`, layout(`<p>${esc(m.name || '')} (${esc(m.email)}) acaba de entrar con su código de invitación.</p>`)).catch((e) => console.error('Aviso al admin', String(e)))
+      const note = T.adminJoinMail(m)
+      await sendMail(ADMIN_EMAIL, 'Admin', note.subject, note.html).catch((e) => console.error('Aviso al admin', String(e)))
       sent++
     } catch (e) {
       console.error('No se pudo enviar la bienvenida', doc.id, String(e))
@@ -158,11 +127,11 @@ async function budgetAlerts(docs) {
         level: level === 100 ? 'late' : 'soon',
         title: level === 100 ? `Te pasaste en ${b.category}` : `${b.category} va al ${Math.round(pct)}% del tope`,
         detail: `${money(b.spent)} de ${money(b.limit)} este mes`,
+        pct,
       })
     }
     if (!found.length) return null
-    const subject = found.length > 1 ? `Myfinance: ${found.length} alertas de presupuesto` : `Myfinance: ${found[0].title}`
-    return { subject, html: layout(`<p style="margin:0">Ojo ${firstName(d.name)}, mira cómo vas con tus topes:</p>${rows(found)}`), mark: { alerts: mark } }
+    return { ...T.budgetMail(d.name, found), mark: { alerts: mark } }
   })
 }
 
@@ -175,12 +144,38 @@ async function streakCheers(docs) {
     const streak = streakEnding(days, today)
     const tag = `${streak}@${today}`
     if (!MILESTONES.includes(streak) || d.streakSent === tag) return null
-    return {
-      subject: `🔥 ¡${streak} días seguidos en Myfinance!`,
-      html: layout(`<p style="margin:0 0 8px;font-size:18px"><b>${streak} días seguidos</b> registrando tus movimientos.</p><p style="margin:0">${firstName(d.name)}, eso es constancia de la buena: así se construyen las finanzas sanas. Mañana, a por el día ${streak + 1}. 💪</p>`),
-      mark: { streakSent: tag },
-    }
+    return { ...T.streakMail(d.name, streak), mark: { streakSent: tag } }
   })
+}
+
+/* ───────────── A la hora en que suele anotar: un aviso suave, solo al celular ───────────── */
+const hourNow = () => Number(new Date().toLocaleString('en-GB', { timeZone: TZ, hour: '2-digit', hour12: false }))
+
+async function usualHourPush(docs) {
+  const today = dayKey(Date.now())
+  const hour = hourNow()
+  let sent = 0
+  for (const doc of docs) {
+    const d = doc.data()
+    // Solo a su hora habitual, una vez al día, sin insistir a quien lleva semanas sin abrir la app
+    if (d.usualHour !== hour || d.sent?.usual === today || !fresh(d)) continue
+    // Si hoy ya anotó (o marcó "hoy no gasté"), no hace falta
+    if ((d.lastTxAt && dayKey(d.lastTxAt) === today) || (d.lastQuietAt && dayKey(d.lastQuietAt) === today)) continue
+    const streak = streakEnding(daysOf(d), shiftDay(today, -1))
+    try {
+      const n = await pushToUid(doc.id, {
+        title: 'Tu ruta de hoy te espera',
+        body: streak >= 2 ? `Tres pasos cortos, 2 minutos. Tu racha de ${streak} días sigue viva.` : 'Tres pasos cortos, 2 minutos: anota tu día, mira cómo vas y aprende algo.',
+        url: '/',
+        tag: 'myfinance-usual',
+      })
+      if (!DRY) await doc.ref.set({ sent: { usual: today } }, { merge: true })
+      if (n) sent++
+    } catch (e) {
+      console.error('No se pudo enviar el aviso de la hora habitual', doc.id, String(e))
+    }
+  }
+  console.log(`Hora habitual (${hour}h): ${sent} aviso(s)`)
 }
 
 /* ───────────── Aviso de meta en grupo: cuando alguien aporta ───────────── */
@@ -210,15 +205,9 @@ async function groupNews(notifyDocs) {
       const n = byUid.get(m.id)
       const others = recent.filter((c) => c.uid !== m.id)
       if (!n?.email || !others.length) continue
-      const lines = others.map((c) => `<li><b>${esc(c.name)}</b> aportó ${money(c.amount)}${c.note ? ` — ${esc(c.note)}` : ''}</li>`).join('')
       try {
-        await sendMail(
-          n.email,
-          n.name,
-          `Myfinance: novedades en «${group.name}»`,
-          layout(`<p style="margin:0 0 8px">Hola ${firstName(n.name)}, se movió la meta <b>${esc(group.name)}</b>:</p><ul style="margin:0 0 12px;padding-left:20px;line-height:1.7">${lines}</ul>
-            <p style="margin:0">Ya llevan <b>${money(all)}</b> de ${money(group.target)} (<b>${pct}%</b>). ${pct >= 100 ? '¡Meta cumplida! 🎉' : '¿Y tú ya pusiste tu parte?'}</p>`),
-        )
+        const mail = T.groupMail(n.name, group, others, all, pct)
+        await sendMail(n.email, n.name, mail.subject, mail.html)
         sent++
       } catch (e) {
         console.error('No se pudo avisar de la meta', g.id, m.id, String(e))
@@ -267,7 +256,7 @@ async function sendPush({ title, body, url = '/' }) {
 }
 
 /** Aviso push a los dispositivos de UNA persona. Si no hay clave VAPID o no activó los avisos, no hace nada. */
-async function pushToUid(uid, { title, body, url = '/' }) {
+async function pushToUid(uid, { title, body, url = '/', tag = 'myfinance-streak' }) {
   if (DRY) return console.log(`[DRY] push a ${uid}: ${title}`)
   if (!process.env.VAPID_PRIVATE_KEY) return 0
   webpush.setVapidDetails(`mailto:${ADMIN_EMAIL}`, VAPID_PUBLIC, process.env.VAPID_PRIVATE_KEY)
@@ -284,7 +273,7 @@ async function pushToUid(uid, { title, body, url = '/' }) {
     if (!sub?.endpoint || seen.has(sub.endpoint)) continue
     seen.add(sub.endpoint)
     try {
-      await webpush.sendNotification(sub, JSON.stringify({ title, body, url, tag: 'myfinance-streak' }), { TTL: 60 * 60 * 6, urgency: 'normal' })
+      await webpush.sendNotification(sub, JSON.stringify({ title, body, url, tag }), { TTL: 60 * 60 * 6, urgency: 'normal' })
       sent++
     } catch (e) {
       if (e.statusCode === 404 || e.statusCode === 410) await doc.ref.delete().catch(() => undefined)
@@ -321,9 +310,9 @@ async function processOutbox() {
     for (const p of people) {
       if (!p.email || seen.has(p.email)) continue
       seen.add(p.email)
-      const text = esc(o.body).replace(/\r?\n/g, '<br>')
       try {
-        await sendMail(p.email, p.name, o.subject, layout(`<p style="margin:0 0 12px">Hola ${firstName(p.name)},</p><p style="margin:0;line-height:1.6">${text}</p>`, 'Recibes este correo porque eres parte de Myfinance.'))
+        const mail = T.adminMail(p.name, o.subject, o.body)
+        await sendMail(p.email, p.name, mail.subject, mail.html)
         sent++
       } catch (e) {
         console.error('No se pudo enviar el correo del admin', p.email, String(e))
@@ -340,6 +329,7 @@ async function frequent() {
     ['welcome', () => welcome()],
     ['budgets', () => budgetAlerts(docs)],
     ['streak', () => streakCheers(docs)],
+    ['usual', () => usualHourPush(docs)],
     ['groups', () => groupNews(docs)],
     ['outbox', () => processOutbox()],
   ]) {
@@ -348,44 +338,8 @@ async function frequent() {
 }
 
 /* ───────────── Recordatorios: 8:00, 14:00 y 20:00 ───────────── */
-const SLOTS = {
-  morning: {
-    skipIfRegistered: false,
-    build(name, items) {
-      const urgent = items.filter((i) => i.level === 'late').length
-      const subject = items.length
-        ? urgent ? `Myfinance: ${urgent} pendiente${urgent > 1 ? 's' : ''} vencido${urgent > 1 ? 's' : ''}` : `Myfinance: tienes ${items.length} pendiente${items.length > 1 ? 's' : ''}`
-        : 'Buenos días: ¿qué vas a registrar hoy?'
-      const body = items.length
-        ? `<p style="margin:0 0 4px">Buenos días ${name}, esto es lo que necesita tu atención hoy:</p>${rows(items)}`
-        : `<p style="margin:0">Buenos días ${name} ☀️ Un buen día empieza sabiendo cuánto tienes. Anota lo de ayer que se te haya quedado por fuera.</p>`
-      return { subject, html: layout(body) }
-    },
-  },
-  afternoon: {
-    skipIfRegistered: true,
-    build(name) {
-      return {
-        subject: '¿Ya anotaste tus gastos de hoy?',
-        html: layout(`<p style="margin:0">Hola ${name}, todavía no has registrado nada hoy. Anotar el almuerzo y el transporte toma 10 segundos y mantiene tus cuentas claras. 💪</p>`),
-      }
-    },
-  },
-  night: {
-    skipIfRegistered: true,
-    build(name, _items, streak) {
-      return streak >= 3
-        ? {
-            subject: `🔥 No pierdas tu racha de ${streak} días`,
-            html: layout(`<p style="margin:0">${name}, llevas <b>${streak} días seguidos</b> registrando y hoy todavía no has anotado nada. Anota aunque sea un gasto pequeño y tu racha sigue viva.</p>`),
-          }
-        : {
-            subject: 'Cierra tu día en Myfinance 🌙',
-            html: layout(`<p style="margin:0">${name}, no dejes que se te olvide: registra lo que gastaste o ganaste hoy antes de dormir. Mañana ya no te acordarás de los detalles.</p>`),
-          }
-    },
-  },
-}
+// skipIfRegistered: a quien ya anotó hoy (o marcó "hoy no gasté") no se le insiste. El diseño está en mail-templates.js
+const SLOTS = { morning: { skipIfRegistered: false }, afternoon: { skipIfRegistered: true }, night: { skipIfRegistered: true } }
 
 async function remind(slot) {
   const cfg = SLOTS[slot]
@@ -393,55 +347,117 @@ async function remind(slot) {
   await forEachPerson(`Recordatorio ${slot}`, await loadNotify(), async (d, uid) => {
     // Ya enviado este turno hoy, o la app lleva más de 2 semanas sin abrirse (no insistimos)
     if (d.sent?.[slot] === today || !fresh(d)) return null
-    if (cfg.skipIfRegistered && d.lastTxAt && dayKey(d.lastTxAt) === today) return null
+    const loggedToday = (d.lastTxAt && dayKey(d.lastTxAt) === today) || (d.lastQuietAt && dayKey(d.lastQuietAt) === today)
+    if (cfg.skipIfRegistered && loggedToday) return null
     const items = Array.isArray(d.items) ? d.items : []
     const streak = streakEnding(daysOf(d), shiftDay(today, -1))
-    const { subject, html } = cfg.build(firstName(d.name), items, streak)
+    const { subject, html } = T.reminderMail(slot, d.name, items, streak)
+    // Por la mañana, con pendientes vencidos o por vencer, además del correo va un aviso al celular
+    if (slot === 'morning' && items.length) {
+      const late = items.filter((i) => i.level === 'late').length
+      await pushToUid(uid, {
+        title: late ? `${late} pendiente${late > 1 ? 's' : ''} vencido${late > 1 ? 's' : ''}` : `Tienes ${items.length} pendiente${items.length > 1 ? 's' : ''}`,
+        body: items[0].detail ? `${items[0].title}. ${items[0].detail}` : items[0].title,
+        url: '/',
+        tag: 'myfinance-pending',
+      })
+    }
     // De noche, con racha viva y nada anotado hoy, además del correo va un aviso al celular
     if (slot === 'night' && streak >= 2) await pushToUid(uid, { title: `🔥 Tu racha de ${streak} días corre peligro`, body: 'Anota un gasto pequeño y sigue viva.', url: '/nuevo' })
     return { subject, html, mark: { sent: { [slot]: today } } }
   })
 }
 
-/* ───────────── Te extrañamos: a los 3 y a los 7 días sin abrir la app ───────────── */
-async function miss() {
-  await forEachPerson('Te extrañamos', await loadNotify(), (d) => {
-    const updated = d.updatedAt?.toMillis?.() ?? 0
-    const idle = Math.floor((Date.now() - updated) / DAY)
-    const stage = idle >= 7 ? 7 : idle >= 3 ? 3 : 0
-    if (!stage || (d.missSince === updated && d.missStage >= stage)) return null
-    const name = firstName(d.name)
-    return {
-      subject: stage === 3 ? `${name}, te extrañamos en Myfinance` : `Hace una semana que no te vemos, ${name}`,
-      html: layout(
-        stage === 3
-          ? `<p style="margin:0">Hola ${name}, llevas ${idle} días sin pasar por Myfinance. No pasa nada: abre la app, anota lo que gastaste estos días y vuelve a tomar el control. Toma 2 minutos. 🙌</p>`
-          : `<p style="margin:0">${name}, ya pasó una semana. Tus cuentas no se organizan solas, pero ponerlas al día es más fácil de lo que parece: anota lo grande primero y lo demás después. Aquí te esperamos. 💚</p>`,
-      ),
-      mark: { missSince: updated, missStage: stage },
+/* ───────────── Inactividad: 4 avisos y, si no vuelve, se libera su cupo ─────────────
+ * Quien lleva INACTIVITY.stages[0] días sin abrir la app recibe un aviso cada semana más o menos (7, 14, 21 y 27 días).
+ * Abrir la app una sola vez cancela todo. Si pasan 30 días y el último aviso tiene 3 o más días, se le quita el acceso
+ * (se borra members/{uid}) pero NO se borra ningún dato suyo. El cupo (config/spots.used) NO baja solo: el administrador
+ * decide a quién dársela desde el panel (released/{uid}).
+ * RELEASE_SEATS=1 es lo que de verdad libera; sin esa variable solo se ensaya: se le avisa al admin a quién se le
+ * liberaría y no se toca a nadie. Quien tenga members/{uid}.keep = true se salta (por si hay que protegerlo). */
+const RELEASE = process.env.RELEASE_SEATS === '1'
+/** INACTIVITY_FROM=AAAA-MM-DD: desde cuándo corre la regla (el día que se le avisó a todos). */
+const POLICY_FROM = Date.parse(process.env.INACTIVITY_FROM || '')
+
+async function inactivity() {
+  const nowMs = Date.now()
+  const members = await db.collection('members').get()
+  const candidates = []
+  let sent = 0
+  let reset = 0
+  for (const m of members.docs) {
+    const md = m.data()
+    const uid = m.id
+    if (md.keep === true || String(md.email || '').toLowerCase() === ADMIN_EMAIL.toLowerCase()) continue
+    try {
+      const u = (await db.collection('users').doc(uid).get()).data() ?? {}
+      // La cuenta regresiva no empieza antes de INACTIVITY_FROM (la fecha en que se anunció la regla): nadie recibe los 4
+      // avisos de golpe ni pierde el cupo por una inactividad anterior al aviso. Sin esa variable, cuenta desde la última vez que entró.
+      const seen = u.lastSeen?.toMillis?.() ?? md.joinedAt?.toMillis?.() ?? null
+      if (!seen) continue
+      const lastSeen = Math.max(seen, Number.isFinite(POLICY_FROM) ? POLICY_FROM : 0)
+      const ref = db.collection('inactivity').doc(uid)
+      const st = (await ref.get()).data() ?? {}
+      const d = decide({ lastSeen, st, nowMs })
+      if (d.action === 'none') continue
+      // Volvió a abrir la app: se borra el seguimiento y listo
+      if (d.action === 'reset') {
+        if (!DRY) await ref.delete()
+        reset++
+        continue
+      }
+      const email = u.email || md.email
+      if (!email) continue
+      const name = u.displayName || md.name
+      if (d.action === 'warn') {
+        const mail = T.inactivityMail(d.stage, name, d.idle)
+        await sendMail(email, name, mail.subject, mail.html)
+        if (!DRY) await ref.set({ since: lastSeen, stage: d.stage, sentAt: nowMs, email }, { merge: true })
+        sent++
+        continue
+      }
+      candidates.push({ uid, name, email, idle: d.idle, lastSeen, ref, reported: st.dryReported === true })
+    } catch (e) {
+      console.error('Inactividad', uid, String(e))
     }
-  })
+  }
+
+  // Quién se queda sin cupo: solo se avisa al admin de los que aún no le habíamos contado (en ensayo no se repite cada día)
+  const toRelease = RELEASE ? candidates : candidates.filter((c) => !c.reported)
+  if (toRelease.length) {
+    const waiting = (await db.collection('waitlist').count().get()).data().count
+    if (RELEASE && !DRY) {
+      for (const c of toRelease) {
+        await db.collection('released').doc(c.uid).set({ name: c.name || null, email: c.email, idle: c.idle, lastSeen: c.lastSeen, releasedAt: admin.firestore.FieldValue.serverTimestamp(), seatGiven: false })
+        await db.collection('members').doc(c.uid).delete()
+        await c.ref.delete()
+        const mail = T.releasedMail(c.name)
+        await sendMail(c.email, c.name, mail.subject, mail.html).catch((e) => console.error('Aviso de cupo liberado', c.uid, String(e)))
+      }
+    } else if (!DRY) {
+      for (const c of toRelease) await c.ref.set({ dryReported: true }, { merge: true })
+    }
+    const note = T.adminReleaseMail(toRelease, waiting, !RELEASE)
+    await sendMail(ADMIN_EMAIL, 'Admin', note.subject, note.html).catch((e) => console.error('Aviso al admin', String(e)))
+  }
+  console.log(`Inactividad: ${sent} aviso(s), ${reset} que volvieron, ${toRelease.length} cupo(s) ${RELEASE ? 'liberados' : 'por liberar (ensayo)'} de ${members.size} miembros`)
 }
 
 /* ───────────── Resumen semanal ───────────── */
 async function weekly() {
   const today = dayKey(Date.now())
-  await forEachPerson('Resumen semanal', await loadNotify(), (d) => {
+  await forEachPerson('Resumen semanal', await loadNotify(), async (d, uid) => {
     const w = d.digest?.week
     if (!w || !w.count || d.sent?.weekly === today || !fresh(d)) return null
     const days = daysOf(d)
-    const registered = Array.from({ length: 7 }, (_, i) => shiftDay(today, -i)).filter((k) => days.has(k)).length
+    // Los últimos 7 días, del más viejo a hoy, para dibujar los círculos del correo
+    const keys = Array.from({ length: 7 }, (_, i) => shiftDay(today, i - 6))
+    const flags = keys.map((k) => days.has(k))
+    const labels = keys.map((k) => 'DLMMJVS'[new Date(`${k}T12:00:00Z`).getUTCDay()])
+    const registered = flags.filter(Boolean).length
     const change = w.prevSpent > 0 ? Math.round(((w.spent - w.prevSpent) / w.prevSpent) * 100) : null
-    const list = [stat('Gastaste', money(w.spent), '#d62839'), stat('Ingresaste', money(w.income), '#1a9d5c')]
-    if (change !== null) list.push(stat('Frente a la semana pasada', `${change > 0 ? '+' : ''}${change}%`, change > 0 ? '#d62839' : '#1a9d5c'))
-    if (w.topCat) list.push(stat('Donde más gastaste', `${w.topCat} (${money(w.topAmount)})`))
-    list.push(stat('Días que registraste', `${registered} de 7`))
-    const verdict = change === null ? '' : change > 10 ? 'Gastaste más que la semana pasada: revisa en qué se fue.' : change < -10 ? '¡Bajaste el gasto frente a la semana pasada! Sigue así.' : 'Vas estable frente a la semana pasada.'
-    return {
-      subject: `Tu semana en Myfinance: gastaste ${money(w.spent)}`,
-      html: layout(`<p style="margin:0">Hola ${firstName(d.name)}, así te fue esta semana:</p>${statTable(list)}${verdict ? `<p style="margin:12px 0 0">${verdict}</p>` : ''}`),
-      mark: { sent: { weekly: today } },
-    }
+    await pushToUid(uid, { title: `Tu semana: gastaste ${money(w.spent)}`, body: change === null ? 'Mira el resumen completo en Myfinance.' : change > 10 ? 'Gastaste más que la semana pasada. Revisa en qué se fue.' : change < -10 ? '¡Bajaste el gasto frente a la semana pasada!' : 'Vas parejo con la semana pasada.', url: '/resumen', tag: 'myfinance-weekly' })
+    return { ...T.weeklyMail(d.name, w, { change, registered, flags, labels }), mark: { sent: { weekly: today } } }
   })
 }
 
@@ -449,22 +465,17 @@ async function weekly() {
 async function monthly() {
   const today = dayKey(Date.now())
   const prevKey = shiftDay(`${today.slice(0, 7)}-01`, -1).slice(0, 7)
-  await forEachPerson('Cierre de mes', await loadNotify(), (d) => {
+  await forEachPerson('Cierre de mes', await loadNotify(), async (d, uid) => {
     const m = (Array.isArray(d.digest?.months) ? d.digest.months : []).find((x) => x.key === prevKey)
     if (!m || !m.count || d.sent?.monthly === prevKey || !fresh(d)) return null
     const balance = m.income - m.expense
     const name = monthName(prevKey)
-    const list = [stat('Ingresos', money(m.income), '#1a9d5c'), stat('Gastos', money(m.expense), '#d62839'), stat('Balance', money(balance), balance >= 0 ? '#1a9d5c' : '#d62839')]
-    if (m.topCat) list.push(stat('Donde más gastaste', `${m.topCat} (${money(m.topAmount)})`))
-    return {
-      subject: `Así cerró tu ${name} en Myfinance`,
-      html: layout(`<p style="margin:0">Hola ${firstName(d.name)}, este fue tu balance de <b>${esc(name)}</b>:</p>${statTable(list)}<p style="margin:12px 0 0">${balance >= 0 ? 'Cerraste en positivo. ' : 'Gastaste más de lo que ingresó. '}Empieza el mes con topes nuevos en <b>Presupuesto</b> y que este sea mejor. 🚀</p>`),
-      mark: { sent: { monthly: prevKey } },
-    }
+    await pushToUid(uid, { title: `Así cerró tu ${name}`, body: balance >= 0 ? `Cerraste en positivo: ${money(balance)}.` : `Te pasaste por ${money(-balance)}. Revisa en qué se fue.`, url: '/', tag: 'myfinance-monthly' })
+    return { ...T.monthlyMail(d.name, m, name), mark: { sent: { monthly: prevKey } } }
   })
 }
 
-const JOBS = { pushupdate: () => sendPush({ title: 'Hay una versión nueva de Myfinance', body: 'Ábrela para actualizar y ver las mejoras.' }), frequent, welcome, morning: () => remind('morning'), afternoon: () => remind('afternoon'), night: () => remind('night'), miss, weekly, monthly }
+const JOBS = { pushupdate: () => sendPush({ title: 'Hay una versión nueva de Myfinance', body: 'Ábrela para actualizar y ver las mejoras.' }), frequent, welcome, morning: () => remind('morning'), afternoon: () => remind('afternoon'), night: () => remind('night'), miss: inactivity, weekly, monthly }
 const mode = process.argv[2]
 const run = JOBS[mode] ? JOBS[mode]() : Promise.reject(new Error(`Modo desconocido: ${mode}`))
 run.then(() => process.exit(0), (e) => {

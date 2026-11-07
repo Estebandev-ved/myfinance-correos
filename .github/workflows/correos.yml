@@ -40,6 +40,10 @@ jobs:
           BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          # Cupos por inactividad (ver inactivity.js): sin estas variables solo se ensaya, no se libera a nadie.
+          # Se ponen en GitHub → Settings → Secrets and variables → Actions → Variables.
+          RELEASE_SEATS: ${{ vars.RELEASE_SEATS }}
+          INACTIVITY_FROM: ${{ vars.INACTIVITY_FROM }}
           SCHEDULE: ${{ github.event.schedule }}
           INPUT_MODE: ${{ github.event.inputs.mode }}
         run: |
