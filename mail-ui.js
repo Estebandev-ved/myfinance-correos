@@ -8,18 +8,18 @@ const APP_URL = 'https://myfinance-gr23.web.app'
 const IMG = 'https://myfinance-info.web.app/email'
 
 const C = {
-  brand: '#258374',
+  brand: '#3f51c9',
   brandDark: '#1B6A5D',
-  mint: '#2FA878', // ingresos (más oscuro que el de la app para que se lea sobre blanco)
-  gold: '#C99A1F',
-  terra: '#D9745B', // gastos
+  mint: '#2f9e5a', // ingresos (más oscuro que el de la app para que se lea sobre blanco)
+  gold: '#c88f0f',
+  terra: '#ff8f73', // gastos
   ink: '#16201F',
-  mute: '#5E706B',
-  line: '#E3ECE9',
-  track: '#E6EEEC',
-  bg: '#EEF3F1',
+  mute: '#5f6178',
+  line: '#dedcf0',
+  track: '#e4e2f2',
+  bg: '#efeefa',
   card: '#FFFFFF',
-  soft: '#F3F8F6',
+  soft: '#f3f1fb',
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
@@ -29,7 +29,7 @@ const titi = (mood = 'neutral', size = 96) => `<img src="${IMG}/titi-${mood}.png
 
 /** Cabecera de la marca: una banda verde con el nombre. */
 const header = () => `<tr><td style="background:${C.brand};border-radius:16px 16px 0 0;padding:18px 24px">
-  <span style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:bold;color:#ffffff;letter-spacing:-0.5px">My<span style="color:#9BE3C8">finance</span></span>
+  <span style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:bold;color:#ffffff;letter-spacing:-0.5px">My<span style="color:#b9f0c9">finance</span></span>
 </td></tr>`
 
 /** Tití a un lado y un título con su texto al otro. */
@@ -102,7 +102,7 @@ function steps(list) {
 
 /** Caja destacada. tone: 'ok' | 'warn' | 'bad' | 'info' */
 function callout(html, tone = 'info') {
-  const t = { ok: ['#E7F6EF', C.mint], warn: ['#FBF3DC', C.gold], bad: ['#FBE9E4', C.terra], info: ['#E8F2EF', C.brand] }[tone]
+  const t = { ok: ['#e4f5ea', C.mint], warn: ['#fbf0d6', C.gold], bad: ['#ffe6df', C.terra], info: ['#e9e6f7', C.brand] }[tone]
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 14px"><tr><td class="callout tx" style="background:${t[0]};border-left:4px solid ${t[1]};border-radius:8px;padding:12px 14px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;color:${C.ink}">${html}</td></tr></table>`
 }
 
@@ -135,12 +135,12 @@ function layout(inner, footer = OFF_NOTE, opts = {}) {
   @media (prefers-color-scheme: dark) {
     .bg { background:#0E1213 !important }
     .card { background:#161C1D !important }
-    .tx { color:#F1F4F3 !important }
-    .mu { color:#9DB0AB !important }
+    .tx { color:#f6eedb !important }
+    .mu { color:#a3a8c4 !important }
     .soft { background:#1F292B !important }
-    .track { background:#2A383A !important }
-    .callout { background:#1F2E2B !important }
-    .dot-off { background:#2A383A !important; color:#9DB0AB !important }
+    .track { background:#313860 !important }
+    .callout { background:#1a1b2e !important }
+    .dot-off { background:#313860 !important; color:#a3a8c4 !important }
   }
   @media (max-width: 480px) { .wrap { width:100% !important } .pad { padding:20px 16px !important } }
 </style></head>

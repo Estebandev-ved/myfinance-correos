@@ -116,7 +116,7 @@ function reminderMail(slot, name, items, streak) {
 function weeklyMail(name, w, { change, registered, flags, labels }) {
   const mood = change === null ? 'neutral' : change > 10 ? 'worried' : change < -10 ? 'celebrate' : 'happy'
   const verdict = change === null ? '' : change > 10 ? 'Gastaste más que la semana pasada: mira en qué se fue y ajusta con calma.' : change < -10 ? '¡Bajaste el gasto frente a la semana pasada! Sigue así.' : 'Vas estable frente a la semana pasada.'
-  const compare = w.prevSpent > 0 ? bars([{ label: 'Semana pasada', value: w.prevSpent, text: money(w.prevSpent), color: '#9DB0AB' }, { label: 'Esta semana', value: w.spent, text: money(w.spent), color: change > 10 ? C.terra : C.brand }]) : ''
+  const compare = w.prevSpent > 0 ? bars([{ label: 'Semana pasada', value: w.prevSpent, text: money(w.prevSpent), color: '#a3a8c4' }, { label: 'Esta semana', value: w.spent, text: money(w.spent), color: change > 10 ? C.terra : C.brand }]) : ''
   return {
     subject: `Tu semana en Myfinance: gastaste ${money(w.spent)}`,
     html: layout(
