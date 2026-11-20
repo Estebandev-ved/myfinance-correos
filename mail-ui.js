@@ -130,13 +130,20 @@ const BAND_TONES = {
   warn: { bg: '#f5b82e', text: '#1a1b2e', kicker: '#6b4a00', sub: '#3d3000' },
   danger: { bg: '#d9482b', text: '#ffffff', kicker: '#ffe2a8', sub: '#ffe9e3' },
   last: { bg: '#a8201a', text: '#ffffff', kicker: '#ffd978', sub: '#ffe0dc' },
+  // Noche con dorado: para los correos de agradecimiento (el sello de por vida)
+  night: { bg: '#14172e', text: '#fff8ea', kicker: '#ffd978', sub: '#c9ccf0' },
 }
+
+/** El sello de por vida en versión correo: un medallón dorado (círculo con el infinito). Sin imágenes, así nunca se rompe. */
+const sealBadge = (size = 96) => `<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:14px auto 2px"><tr><td align="center">
+  <div style="width:${size - 12}px;height:${size - 12}px;line-height:${size - 12}px;border-radius:50%;background:#f5b82e;border:6px double #8a5f00;text-align:center;font-family:Arial,Helvetica,sans-serif;font-size:${Math.round(size * 0.5)}px;font-weight:bold;color:#6b4a00">&infin;</div>
+  <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:bold;letter-spacing:3px;color:#ffd978;margin-top:8px">DE POR VIDA</div></td></tr></table>`
 
 /**
  * Franja grande de color con Tití en el centro: lo primero que se ve al abrir el correo.
  * tone: 'soft' | 'warn' | 'danger' | 'last'; kicker: rótulo en mayúsculas; big: el título; sub: una línea de apoyo.
  */
-function band({ tone = 'soft', mood = 'neutral', kicker, big, sub }) {
+function band({ tone = 'soft', mood = 'neutral', kicker, big, sub, extra = '' }) {
   const t = BAND_TONES[tone] ?? BAND_TONES.soft
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 18px;background:${t.bg};border-radius:16px"><tr><td align="center" style="padding:20px 18px 0">
     <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:bold;letter-spacing:2px;color:${t.kicker}">${kicker}</div></td></tr>
@@ -144,6 +151,7 @@ function band({ tone = 'soft', mood = 'neutral', kicker, big, sub }) {
   <tr><td align="center" style="padding:0 20px 22px">
     <div style="font-family:Arial,Helvetica,sans-serif;font-size:28px;line-height:1.15;font-weight:bold;color:${t.text}">${big}</div>
     ${sub ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.45;color:${t.sub};margin-top:8px">${sub}</div>` : ''}
+    ${extra}
   </td></tr></table>`
 }
 
@@ -220,4 +228,4 @@ ${cta}
 </table></td></tr></table></body></html>`
 }
 
-module.exports = { C, esc, titi, hero, p, button, band, zoneStrip, giftCard, bigButton, meter, bars, kpis, dots, steps, callout, rows, stat, statTable, layout, OFF_NOTE, APP_URL, IMG }
+module.exports = { C, esc, titi, hero, p, button, band, sealBadge, zoneStrip, giftCard, bigButton, meter, bars, kpis, dots, steps, callout, rows, stat, statTable, layout, OFF_NOTE, APP_URL, IMG }

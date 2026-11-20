@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'frequent, welcome, morning, afternoon, night, miss, weekly, monthly o pushupdate'
+        description: 'frequent, welcome, morning, afternoon, night, miss, thanks, weekly, monthly o pushupdate'
         required: true
         default: 'frequent'
 
@@ -44,6 +44,9 @@ jobs:
           # Se ponen en GitHub → Settings → Secrets and variables → Actions → Variables.
           RELEASE_SEATS: ${{ vars.RELEASE_SEATS }}
           INACTIVITY_FROM: ${{ vars.INACTIVITY_FROM }}
+          # Sello de por vida (ver thanks.js): sin GIFT_SEND=1 solo se ensaya (se le avisa al admin). GIFT_MIN_STREAK cambia la racha mínima (10).
+          GIFT_SEND: ${{ vars.GIFT_SEND }}
+          GIFT_MIN_STREAK: ${{ vars.GIFT_MIN_STREAK }}
           SCHEDULE: ${{ github.event.schedule }}
           INPUT_MODE: ${{ github.event.inputs.mode }}
         run: |

@@ -37,6 +37,8 @@ const samples = {
   '13-inactividad-27': T.inactivityMail(27, 'Esteban', 27),
   '14-cupo-liberado': T.releasedMail('Esteban'),
   '15-admin-liberacion': T.adminReleaseMail([{ name: 'Ana Gómez', email: 'ana@mail.com', idle: 31 }, { name: '', email: 'beto@mail.com', idle: 34 }], 4, true),
+  '17-sello-de-por-vida': T.lifetimeMail({ name: 'Esteban Ruiz', streak: 21, coins: 200, link: 'https://myfinance-gr23.web.app/?regalo=EJEMPLO-no-sirve-1234567' }),
+  '18-admin-sellos': T.adminGiftMail([{ name: 'Ana Gómez', email: 'ana@mail.com', streak: 22, coins: 200 }, { name: '', email: 'beto@mail.com', streak: 11, coins: 100 }], true),
   '16-admin-mensaje': T.adminMail('Esteban', 'Novedades de Myfinance', 'Hola,\n\nYa salió la versión nueva con Tití.\nCuéntanos qué te parece.'),
 }
 

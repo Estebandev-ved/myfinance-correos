@@ -2,7 +2,7 @@
  * Myfinance — las plantillas de cada correo. Son funciones puras: reciben datos y devuelven { subject, html }, así se
  * pueden ver de antemano (node email-preview.js) sin enviar nada. send.js solo decide a quién y cuándo.
  */
-const { C, esc, hero, p, meter, bars, kpis, dots, steps, callout, rows, statTable, stat, layout, band, zoneStrip, giftCard, bigButton, APP_URL } = require('./mail-ui')
+const { C, esc, hero, p, meter, bars, kpis, dots, steps, callout, rows, statTable, stat, layout, band, sealBadge, zoneStrip, giftCard, bigButton, APP_URL } = require('./mail-ui')
 
 const money = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0)
 const firstName = (n) => esc(String(n || 'amigo').trim().split(/\s+/)[0])
@@ -246,4 +246,45 @@ function adminReleaseMail(list, waiting, dry) {
   }
 }
 
-module.exports = { money, firstName, INACTIVITY, MILESTONES, welcomeMail, adminJoinMail, budgetMail, streakMail, groupMail, reminderMail, weeklyMail, monthlyMail, adminMail, inactivityMail, releasedMail, adminReleaseMail, statTable, stat }
+/* ───────────── Agradecimiento: sello de por vida para quien lleva racha ───────────── */
+/**
+ * Un correo que se siente como una carta y un regalo: franja de noche con dorado, el sello, la racha de la persona y un
+ * botón que abre la experiencia dentro de la app. El enlace trae el código personal (`?regalo=`): sin él no se puede reclamar.
+ * `streak` = días de racha, `coins` = monedas de Tití del regalo, `link` = enlace personal con el código.
+ */
+function lifetimeMail({ name, streak, coins, link }) {
+  const n = firstName(name)
+  const stat = (big, small) => `<td align="center" class="soft" style="background:#f3f1fb;border-radius:12px;padding:12px 6px"><div style="font-family:Arial,Helvetica,sans-serif;font-size:20px;font-weight:bold;color:${C.ink}" class="tx">${big}</div><div class="mu" style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:${C.mute};margin-top:3px">${small}</div></td>`
+  const stats = `<table role="presentation" width="100%" cellpadding="0" cellspacing="6" style="margin:2px -6px 14px;width:calc(100% + 12px)"><tr>${stat(`&#128293; ${streak}`, streak === 1 ? 'día de racha' : 'días de racha')}${stat('&infin;', 'sello de por vida')}${stat(`+${coins}`, 'monedas de Tití')}</tr></table>`
+  return {
+    subject: `✨ ${n}, tu cuenta de Myfinance ya tiene el sello de por vida`,
+    html: layout(
+      band({ tone: 'night', mood: 'celebrate', kicker: 'UNA CARTA PARA TI', big: `${n}, eres parte de algo grande`, sub: 'Gracias por usar Myfinance.', extra: sealBadge(104) }) +
+        stats +
+        p(`Llevas <b>${streak} ${streak === 1 ? 'día' : 'días'} seguidos</b> cuidando tu plata, y eso se nota. Myfinance es un proyecto grande que apenas está empezando, y tú eres parte de él desde el principio.`) +
+        p('Lo apreciamos muchísimo. Por eso queremos darte algo que dure: <b>tu cuenta ya tiene el sello de por vida</b>. Tu lugar en Myfinance es tuyo para siempre y no lo vamos a liberar por inactividad.') +
+        giftCard({ coins, title: 'Tu regalo', text: 'Para estrenar en el clóset de tu avatar: gorras, gafas, ropa y más.' }) +
+        bigButton('Abrir mi regalo', link, '#f5b82e', '#1a1b2e') +
+        `<div class="mu" style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:${C.mute};text-align:center;margin:0 0 6px">Este regalo es personal y solo se abre desde este correo, con tu cuenta. No compartas el enlace. Las monedas son de la app y no tienen valor en plata real.</div>`,
+      'Recibes este correo porque eres parte de Myfinance y llevas racha. Gracias por estar.',
+      { preheader: `Gracias por tus ${streak} días de racha. Abre tu regalo: sello de por vida y ${coins} monedas.`, cta: false },
+    ),
+  }
+}
+
+/** Para el administrador: a quién se le mandaría (o se le mandó) el sello de por vida. */
+function adminGiftMail(list, dry) {
+  const items = list.map((x) => `<li style="margin:4px 0"><b>${esc(x.name || x.email)}</b> · ${esc(x.email)} · racha ${x.streak} · ${x.coins} monedas</li>`).join('')
+  return {
+    subject: dry ? `Myfinance (PRUEBA): ${list.length} sello(s) de por vida se mandarían` : `Myfinance: ${list.length} sello(s) de por vida enviado(s)`,
+    html: layout(
+      hero({ mood: 'celebrate', title: dry ? 'Prueba: así se mandarían los sellos' : 'Sellos de por vida enviados', text: dry ? 'Todavía no se le mandó nada a nadie. Revisa la lista.' : 'Cada uno recibió su correo y quedó protegido de la liberación por inactividad.' }) +
+        `<ul class="tx" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:${C.ink};padding-left:20px;margin:0 0 14px">${items}</ul>` +
+        (dry ? callout('Para que se manden de verdad, pon la variable <b>GIFT_SEND=1</b> en GitHub Actions (y antes publica la app y las reglas).', 'info') : ''),
+      'Aviso para el administrador.',
+      { cta: false },
+    ),
+  }
+}
+
+module.exports = { money, firstName, INACTIVITY, MILESTONES, welcomeMail, adminJoinMail, budgetMail, streakMail, groupMail, reminderMail, weeklyMail, monthlyMail, adminMail, inactivityMail, releasedMail, adminReleaseMail, lifetimeMail, adminGiftMail, statTable, stat }

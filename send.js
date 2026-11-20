@@ -42,6 +42,8 @@ const DAY = 86_400_000
 const STALE_AFTER_MS = 14 * DAY
 const { MILESTONES, money } = T
 const { decide } = require('./inactivity')
+const { pickGift, MIN_STREAK } = require('./thanks')
+const crypto = require('node:crypto')
 
 const dayKey = (ms) => new Date(ms).toLocaleDateString('en-CA', { timeZone: TZ })
 const shiftDay = (key, n) => new Date(new Date(`${key}T00:00:00Z`).getTime() + n * DAY).toISOString().slice(0, 10)
@@ -445,6 +447,87 @@ async function inactivity() {
   console.log(`Inactividad: ${sent} aviso(s), ${reset} que volvieron, ${toRelease.length} cupo(s) ${RELEASE ? 'liberados' : 'por liberar (ensayo)'} de ${members.size} miembros`)
 }
 
+/* ───────────── Agradecimiento: sello de por vida para quien lleva racha ─────────────
+ * Quien lleva GIFT_MIN_STREAK días de racha (10 por defecto) y sigue activo recibe un correo de gracias con un enlace
+ * personal. El correo es lo único que abre el regalo: el enlace trae un código (giftTokens/{uid}, que ningún cliente puede
+ * leer) y las reglas de Firestore lo exigen para reclamar gifts/{uid}. Al enviarlo, members/{uid}.keep = true: ese cupo
+ * ya no se libera por inactividad ("sello de por vida"). Una sola vez por persona (si gifts/{uid} existe, se salta).
+ * GIFT_SEND=1 es lo que de verdad envía; sin esa variable es un ensayo: solo se le avisa al admin a quién se le mandaría.
+ * ANTES de activarlo hay que publicar la app y las reglas (la pantalla del regalo y gifts/giftTokens viven ahí). */
+const GIFT_SEND = process.env.GIFT_SEND === '1'
+const GIFT_MIN_STREAK = Number(process.env.GIFT_MIN_STREAK) || MIN_STREAK
+/** Tope por corrida: si de repente califica mucha gente, se manda en tandas y no de golpe. */
+const MAX_GIFTS_PER_RUN = 25
+
+async function lifetimeThanks() {
+  const nowMs = Date.now()
+  const members = await db.collection('members').get()
+  const found = []
+  for (const m of members.docs) {
+    const md = m.data()
+    const uid = m.id
+    if (String(md.email || '').toLowerCase() === ADMIN_EMAIL.toLowerCase()) continue
+    try {
+      if ((await db.collection('gifts').doc(uid).get()).exists) continue
+      const u = (await db.collection('users').doc(uid).get()).data() ?? {}
+      const st = (await db.collection('stats').doc(uid).get()).data() ?? {}
+      const pick = pickGift({ streak: st.streak, lastSeenMs: u.lastSeen?.toMillis?.(), nowMs, minStreak: GIFT_MIN_STREAK })
+      const email = u.email || md.email
+      if (!pick || !email) continue
+      found.push({ uid, ref: m.ref, name: u.displayName || md.name, email, ...pick })
+    } catch (e) {
+      console.error('Agradecimiento', uid, String(e))
+    }
+  }
+  const batch = found.slice(0, MAX_GIFTS_PER_RUN)
+
+  if (!GIFT_SEND) {
+    // Ensayo: solo se le cuenta al admin lo que aún no sabe (no se repite cada día)
+    const fresh = []
+    for (const f of batch) if (!(await db.collection('giftPreview').doc(f.uid).get()).exists) fresh.push(f)
+    if (fresh.length) {
+      const note = T.adminGiftMail(fresh, true)
+      await sendMail(ADMIN_EMAIL, 'Admin', note.subject, note.html).catch((e) => console.error('Aviso al admin', String(e)))
+      if (!DRY) for (const f of fresh) await db.collection('giftPreview').doc(f.uid).set({ reportedAt: admin.firestore.FieldValue.serverTimestamp() })
+    }
+    return console.log(`Agradecimiento (ensayo): ${found.length} con racha ≥ ${GIFT_MIN_STREAK}, ${fresh.length} nuevo(s) avisado(s) al admin`)
+  }
+
+  const done = []
+  for (const f of batch) {
+    const giftRef = db.collection('gifts').doc(f.uid)
+    const tokenRef = db.collection('giftTokens').doc(f.uid)
+    try {
+      if (DRY) {
+        console.log(`[DRY] sello a ${f.email}: racha ${f.streak}, ${f.coins} monedas`)
+        continue
+      }
+      const token = crypto.randomBytes(18).toString('base64url')
+      // create() falla si ya existe: así dos corridas a la vez no mandan el correo dos veces
+      await giftRef.create({ kind: 'lifetime', coins: f.coins, streak: f.streak, tier: f.tier, status: 'sent', sentAt: admin.firestore.FieldValue.serverTimestamp() })
+      await tokenRef.set({ token })
+      const mail = T.lifetimeMail({ name: f.name, streak: f.streak, coins: f.coins, link: `${APP_URL}/?regalo=${token}` })
+      try {
+        await sendMail(f.email, f.name, mail.subject, mail.html)
+      } catch (e) {
+        // Si el correo no salió, se deshace todo para que se reintente en la próxima corrida
+        await giftRef.delete().catch(() => undefined)
+        await tokenRef.delete().catch(() => undefined)
+        throw e
+      }
+      await f.ref.set({ keep: true, lifetimeAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+      done.push(f)
+    } catch (e) {
+      console.error('No se pudo enviar el sello', f.uid, String(e))
+    }
+  }
+  if (done.length) {
+    const note = T.adminGiftMail(done, false)
+    await sendMail(ADMIN_EMAIL, 'Admin', note.subject, note.html).catch((e) => console.error('Aviso al admin', String(e)))
+  }
+  console.log(`Agradecimiento: ${done.length} sello(s) enviados de ${found.length} que califican (racha ≥ ${GIFT_MIN_STREAK})`)
+}
+
 /* ───────────── Resultados de las preguntas de un toque, para la web ─────────────
  * Suma las respuestas de polls/ y publica pollStats/summary SOLO con las preguntas que ya tienen POLL_MIN respuestas o más
  * (así no se muestra un porcentaje de 2 personas). Sin nombres ni respuestas individuales. La web lo lee sin iniciar sesión. */
@@ -466,7 +549,7 @@ async function pollStats() {
 
 /** Lo diario de las 10:00: inactividad y resultados de encuestas (si una falla, la otra sigue). */
 async function daily() {
-  for (const [label, fn] of [['inactividad', inactivity], ['encuestas', pollStats]]) await fn().catch((e) => console.error(`Falló ${label}`, String(e)))
+  for (const [label, fn] of [['inactividad', inactivity], ['agradecimiento', lifetimeThanks], ['encuestas', pollStats]]) await fn().catch((e) => console.error(`Falló ${label}`, String(e)))
 }
 
 /* ───────────── Resumen semanal ───────────── */
@@ -501,7 +584,7 @@ async function monthly() {
   })
 }
 
-const JOBS = { pushupdate: () => sendPush({ title: 'Hay una versión nueva de Myfinance', body: 'Ábrela para actualizar y ver las mejoras.' }), frequent, welcome, morning: () => remind('morning'), afternoon: () => remind('afternoon'), night: () => remind('night'), miss: daily, pollstats: pollStats, weekly, monthly }
+const JOBS = { pushupdate: () => sendPush({ title: 'Hay una versión nueva de Myfinance', body: 'Ábrela para actualizar y ver las mejoras.' }), frequent, welcome, morning: () => remind('morning'), afternoon: () => remind('afternoon'), night: () => remind('night'), miss: daily, thanks: lifetimeThanks, pollstats: pollStats, weekly, monthly }
 const mode = process.argv[2]
 const run = JOBS[mode] ? JOBS[mode]() : Promise.reject(new Error(`Modo desconocido: ${mode}`))
 run.then(() => process.exit(0), (e) => {
