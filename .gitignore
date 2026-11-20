@@ -3,3 +3,4 @@ node_modules
 serviceAccount*.json
 *-firebase-adminsdk-*.json
 vapid-private.txt
+preview/

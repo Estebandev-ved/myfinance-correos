@@ -2,12 +2,13 @@
  * Myfinance — las plantillas de cada correo. Son funciones puras: reciben datos y devuelven { subject, html }, así se
  * pueden ver de antemano (node email-preview.js) sin enviar nada. send.js solo decide a quién y cuándo.
  */
-const { C, esc, hero, p, meter, bars, kpis, dots, steps, callout, rows, statTable, stat, layout, APP_URL } = require('./mail-ui')
+const { C, esc, hero, p, meter, bars, kpis, dots, steps, callout, rows, statTable, stat, layout, band, zoneStrip, giftCard, bigButton, APP_URL } = require('./mail-ui')
 
 const money = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0)
 const firstName = (n) => esc(String(n || 'amigo').trim().split(/\s+/)[0])
 
-const { INACTIVITY } = require('./inactivity')
+const { INACTIVITY, COMEBACK_COINS } = require('./inactivity')
+const COMEBACK_AFTER_DAYS = INACTIVITY.stages[0]
 
 /* ───────────── Bienvenida ───────────── */
 function welcomeMail(m) {
@@ -159,21 +160,60 @@ function adminMail(name, subject, body) {
 /* ───────────── Inactividad: avisos y cupo liberado ───────────── */
 const INACTIVITY_FOOTER = 'Recibes este aviso porque tienes una cuenta en Myfinance. Tus datos nunca se borran por no usar la app.'
 
-/** stage: 7, 14, 21 o 27 (día de inactividad en que se manda); idle: días reales sin entrar */
+/**
+ * stage: 7, 14, 21 o 27 (el aviso que toca: define el TONO); idle: días reales sin entrar (define los NÚMEROS).
+ * Cuatro rangos, cada vez más urgentes pero siempre amables: 7 "te extrañamos", 14 "se está durmiendo",
+ * 21 "cuenta en peligro", 27 "última llamada". En todos hay un regalo de monedas por volver (ver COMEBACK_COINS).
+ * Ojo con lo que se promete: lo que se pierde es el CUPO (la cuenta se desactiva); los datos NO se borran.
+ */
 function inactivityMail(stage, name, idle) {
   const n = firstName(name)
-  const left = Math.max(0, INACTIVITY.release - idle)
-  const bar = `<div class="mu" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:${C.mute};margin:6px 0 6px">Llevas ${idle} días sin entrar · el cupo se libera al día ${INACTIVITY.release}</div>${meter((idle / INACTIVITY.release) * 100, idle >= 21 ? C.terra : idle >= 14 ? C.gold : C.brand, 12)}<div style="height:14px"></div>`
-  const keep = callout('Para conservar tu cupo basta con <b>abrir la app</b> una vez. No tienes que hacer nada más.', 'ok')
+  const left = idle >= INACTIVITY.release ? null : INACTIVITY.release - idle
+  const days = (k) => `${k} ${k === 1 ? 'día' : 'días'}`
+  const leftBig = left === null ? 'Muy pronto' : left === 1 ? 'Te queda 1 día' : `Te quedan ${left} días`
+  const leftShort = left === null ? 'muy pronto' : `en ${days(left)}`
+  const gift = giftCard({ coins: COMEBACK_COINS, text: 'Estrénalas en el clóset de tu avatar: gorras, gafas, ropa y más. Se te entregan al abrir la app.' })
+  const safe = callout('<b>Tus datos están a salvo.</b> Lo único que está en juego es tu cupo: se libera para otra persona de la lista de espera. Lo que anotaste no se borra.', 'ok')
+  const strip = zoneStrip(idle, INACTIVITY.release)
+
   const copy = {
-    7: { mood: 'sleeping', subject: `${n}, te extrañamos en Myfinance`, title: 'Tití se quedó dormido esperándote', text: 'Hace una semana que no pasas por aquí.', body: p('No pasa nada: abre la app, anota lo que gastaste estos días y vuelve a tomar el control. Toma 2 minutos.') },
-    14: { mood: 'worried', subject: `Hace dos semanas que no te vemos, ${n}`, title: 'Te estamos guardando el cupo', text: 'Llevas dos semanas sin entrar.', body: p('Tus cuentas no se organizan solas, pero ponerlas al día es más fácil de lo que parece: anota lo grande primero y lo demás después.') + p('Los cupos de Myfinance son pocos y hay gente esperando, así que no podemos guardarlos para siempre.') },
-    21: { mood: 'worried', subject: `${n}, tu cupo en Myfinance está por vencer`, title: `Te quedan ${left} días de cupo`, text: 'Si no vuelves, se lo daremos a otra persona de la lista de espera.', body: p('Todavía estás a tiempo. Y si ya no quieres seguir, no pasa nada: no tienes que hacer nada y tus datos se conservan.') },
-    27: { mood: 'surprised', subject: `Último aviso, ${n}: en ${left} días liberamos tu cupo`, title: `En ${left} días liberamos tu cupo`, text: 'Este es el último aviso.', body: p('Si abres la app antes, todo sigue igual. Si no, tu cuenta se desactiva y el cupo pasa a otra persona. <b>Tus datos no se borran</b> y podrás volver cuando haya un cupo libre.') },
+    7: {
+      tone: 'soft', mood: 'sleeping', kicker: 'TE EXTRAÑAMOS', big: 'Tití se quedó dormido esperándote', sub: `Llevas ${days(idle)} sin pasar por aquí.`,
+      subject: `🎁 ${n}, Tití te guarda ${COMEBACK_COINS} monedas`,
+      pre: `Vuelve y llévate ${COMEBACK_COINS} monedas para tu avatar.`,
+      body: p(`${n}, no pasa nada: la vida se complica. Abre la app, anota lo de estos días (son 2 minutos) y Tití te recibe con un regalo.`) + gift,
+      cta: 'Volver y reclamar mis monedas', ctaColor: C.brand, ctaText: '#ffffff',
+    },
+    14: {
+      tone: 'warn', mood: 'worried', kicker: 'TU CUENTA SE ESTÁ DURMIENDO', big: `Hace ${days(idle)} que no te vemos`, sub: 'Los cupos de Myfinance son pocos y hay gente esperando.',
+      subject: `😴 ${n}, tu cuenta de Myfinance se está durmiendo (+${COMEBACK_COINS} monedas)`,
+      pre: `Entra una vez y conserva tu cupo. Además, ${COMEBACK_COINS} monedas de regalo.`,
+      body: strip + p('Tus cuentas no se organizan solas, pero ponerlas al día es más fácil de lo que parece: anota lo grande primero y lo demás después.') + gift,
+      cta: 'Despertar mi cuenta', ctaColor: '#1a1b2e', ctaText: '#ffd978',
+    },
+    21: {
+      tone: 'danger', mood: 'surprised', kicker: '⚠ TU CUENTA ESTÁ EN PELIGRO', big: leftBig, sub: 'Si no vuelves, desactivamos tu cuenta y damos tu cupo a otra persona.',
+      subject: `⚠️ ${n}, tu cuenta de Myfinance está en peligro`,
+      pre: `${left === null ? 'Muy pronto' : `Quedan ${days(left)}`} para conservar tu cupo. Abre la app y llévate ${COMEBACK_COINS} monedas.`,
+      body: strip + p('Todavía estás a tiempo, y es fácil: <b>abre la app una sola vez</b> y todo sigue como si nada. Te lo agradecemos con monedas.') + gift + safe,
+      cta: 'Salvar mi cuenta ahora', ctaColor: '#d9482b', ctaText: '#ffffff',
+    },
+    27: {
+      tone: 'last', mood: 'surprised', kicker: '⏳ ÚLTIMA LLAMADA', big: left === null ? 'Hoy puede ser el último día' : left === 1 ? 'Queda 1 día' : `Quedan ${left} días`, sub: `Tu cuenta se desactiva ${leftShort}.`,
+      subject: `⏳ Última llamada, ${n}: tu cuenta se desactiva ${leftShort}`,
+      pre: `Este es el último aviso. Abre la app y conserva tu cupo (+${COMEBACK_COINS} monedas).`,
+      body: strip + p('Este es el <b>último aviso</b>, no te escribiremos más sobre esto. Si abres la app antes de que se acabe el plazo, todo sigue igual y te llevas el regalo.') + gift + safe,
+      cta: 'Quedarme en Myfinance', ctaColor: '#a8201a', ctaText: '#ffffff',
+    },
   }[stage]
+
   return {
     subject: copy.subject,
-    html: layout(hero({ mood: copy.mood, title: copy.title, text: copy.text }) + bar + copy.body + keep, INACTIVITY_FOOTER, { preheader: copy.text, cta: { label: 'Seguir en Myfinance' } }),
+    html: layout(
+      band({ tone: copy.tone, mood: copy.mood, kicker: copy.kicker, big: copy.big, sub: copy.sub }) + copy.body + bigButton(copy.cta, APP_URL, copy.ctaColor, copy.ctaText) + `<div class="mu" style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:${C.mute};text-align:center;margin:0 0 6px">Las monedas son de la app y no tienen valor en plata real. El regalo es para quien vuelve tras ${COMEBACK_AFTER_DAYS} días o más sin entrar.</div>`,
+      INACTIVITY_FOOTER,
+      { preheader: copy.pre, cta: false },
+    ),
   }
 }
 

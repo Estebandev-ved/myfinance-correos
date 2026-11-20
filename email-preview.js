@@ -10,7 +10,13 @@ const T = require('./mail-templates')
 
 const out = path.resolve(process.argv[2] || path.join(__dirname, 'preview'))
 fs.mkdirSync(out, { recursive: true })
-const local = 'file:///' + path.resolve(__dirname, '..', 'web', 'email').replace(/\\/g, '/')
+const imgDir = path.resolve(__dirname, '..', 'web', 'email')
+// Las imágenes de Tití se incrustan (data:) para que la vista previa se vea completa aunque el visor bloquee archivos locales
+const inline = (html) =>
+  html.replace(/https:\/\/myfinance-info\.web\.app\/email\/(titi-[a-z]+\.png)/g, (url, f) => {
+    const file = path.join(imgDir, f)
+    return fs.existsSync(file) ? `data:image/png;base64,${fs.readFileSync(file).toString('base64')}` : url
+  })
 
 const samples = {
   '01-bienvenida': T.welcomeMail({ name: 'Esteban Ruiz', email: 'esteban@mail.com' }),
@@ -36,7 +42,7 @@ const samples = {
 
 const links = []
 for (const [name, mail] of Object.entries(samples)) {
-  fs.writeFileSync(path.join(out, `${name}.html`), mail.html.replaceAll('https://myfinance-info.web.app/email', local))
+  fs.writeFileSync(path.join(out, `${name}.html`), inline(mail.html))
   links.push(`<li><a href="${name}.html">${name}</a> — ${mail.subject}</li>`)
 }
 fs.writeFileSync(path.join(out, 'index.html'), `<!doctype html><meta charset="utf-8"><title>Correos</title><body style="font-family:Arial;padding:24px"><h1>Correos de Myfinance</h1><ul>${links.join('')}</ul></body>`)

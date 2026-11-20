@@ -121,6 +121,64 @@ const stat = (label, value, color = C.ink) =>
   `<tr><td class="mu" style="padding:9px 0;border-bottom:1px solid ${C.line};font-family:Arial,Helvetica,sans-serif;font-size:14px;color:${C.mute}">${esc(label)}</td><td align="right" style="padding:9px 0;border-bottom:1px solid ${C.line};font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;color:${color}">${esc(value)}</td></tr>`
 const statTable = (list) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 12px">${list.join('')}</table>`
 
+
+/* ───────────── Piezas llamativas (correos de "vuelve", ver inactivityMail) ───────────── */
+
+/** Colores de cada franja de alerta. text = color del texto sobre el fondo; kicker = el rótulo chiquito de arriba. */
+const BAND_TONES = {
+  soft: { bg: C.brand, text: '#ffffff', kicker: '#ffd978', sub: '#e3e6ff' },
+  warn: { bg: '#f5b82e', text: '#1a1b2e', kicker: '#6b4a00', sub: '#3d3000' },
+  danger: { bg: '#d9482b', text: '#ffffff', kicker: '#ffe2a8', sub: '#ffe9e3' },
+  last: { bg: '#a8201a', text: '#ffffff', kicker: '#ffd978', sub: '#ffe0dc' },
+}
+
+/**
+ * Franja grande de color con Tití en el centro: lo primero que se ve al abrir el correo.
+ * tone: 'soft' | 'warn' | 'danger' | 'last'; kicker: rótulo en mayúsculas; big: el título; sub: una línea de apoyo.
+ */
+function band({ tone = 'soft', mood = 'neutral', kicker, big, sub }) {
+  const t = BAND_TONES[tone] ?? BAND_TONES.soft
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 18px;background:${t.bg};border-radius:16px"><tr><td align="center" style="padding:20px 18px 0">
+    <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:bold;letter-spacing:2px;color:${t.kicker}">${kicker}</div></td></tr>
+  <tr><td align="center" style="padding:6px 0 0">${titi(mood, 132)}</td></tr>
+  <tr><td align="center" style="padding:0 20px 22px">
+    <div style="font-family:Arial,Helvetica,sans-serif;font-size:28px;line-height:1.15;font-weight:bold;color:${t.text}">${big}</div>
+    ${sub ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.45;color:${t.sub};margin-top:8px">${sub}</div>` : ''}
+  </td></tr></table>`
+}
+
+/**
+ * Los 30 días en una tira de cuadritos pintada por rangos: 1–13 azul (Tití te extraña), 14–20 ámbar (se está durmiendo),
+ * 21–30 rojo (en peligro). Los días que ya pasaron van llenos; el resto, vacíos. `idle` = días sin entrar; `total` = día del límite.
+ */
+function zoneStrip(idle, total = 30) {
+  const color = (d) => (d >= 21 ? '#d9482b' : d >= 14 ? '#f5b82e' : C.brand)
+  const done = Math.max(0, Math.min(total, Math.round(idle)))
+  const cells = Array.from({ length: total }, (_, i) => {
+    const d = i + 1
+    const on = d <= done
+    return `<td${on ? '' : ' class="track"'} height="14" style="background:${on ? color(d) : C.track};border-radius:3px;font-size:1px;line-height:1px">&nbsp;</td>`
+  }).join('')
+  const zone = (label, c) => `<td align="center" class="mu" style="font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.3;color:${C.mute};padding-top:2px"><span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:${c};margin-right:4px"></span>${label}</td>`
+  return `<div class="mu" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:${C.mute};margin:4px 0 6px"><b class="tx" style="color:${C.ink}">Hoy es el día ${Math.min(done, total)} de ${total}</b> sin entrar</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="2" style="margin:0 -2px 6px;width:calc(100% + 4px)"><tr>${cells}</tr></table>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px"><tr>${zone('1–13 · te extrañamos', C.brand)}${zone('14–20 · se duerme', '#f5b82e')}${zone('21–30 · en peligro', '#d9482b')}</tr></table>`
+}
+
+/** Tarjeta del regalo: una moneda grande y lo que se gana. Las monedas son de la app, sin valor en plata real. */
+function giftCard({ coins, title = 'Regalo por volver', text }) {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="gift" style="margin:6px 0 16px;background:#fff6dc;border:2px dashed #f5b82e;border-radius:16px"><tr>
+    <td width="92" align="center" valign="middle" style="padding:16px 0 16px 16px"><div style="width:62px;height:62px;line-height:62px;border-radius:50%;background:#f5b82e;border:4px solid #c88f0f;text-align:center;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#6b4a00">${coins}</div></td>
+    <td valign="middle" style="padding:16px 18px 16px 14px">
+      <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:bold;letter-spacing:1.5px;color:#c88f0f">${esc(title).toUpperCase()}</div>
+      <div class="gift-tx" style="font-family:Arial,Helvetica,sans-serif;font-size:21px;line-height:1.2;font-weight:bold;color:${C.ink};margin-top:3px">+${coins} monedas de Tití</div>
+      <div class="gift-tx" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:${C.mute};margin-top:4px">${text}</div>
+    </td></tr></table>`
+}
+
+/** Botón grande de ancho completo, del color de la alerta. */
+const bigButton = (label, url = APP_URL, color = C.brand, textColor = '#ffffff') => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 14px"><tr><td align="center" style="background:${color};border-radius:14px"><a href="${esc(url)}" style="display:block;padding:17px 24px;font-family:Arial,Helvetica,sans-serif;font-size:17px;font-weight:bold;color:${textColor};text-decoration:none">${esc(label)}</a></td></tr></table>`
+
 const OFF_NOTE = 'Puedes apagar estos correos en Más → Ajustes → Recordatorios por correo.'
 
 /**
@@ -141,6 +199,8 @@ function layout(inner, footer = OFF_NOTE, opts = {}) {
     .track { background:#313860 !important }
     .callout { background:#1a1b2e !important }
     .dot-off { background:#313860 !important; color:#a3a8c4 !important }
+    .gift { background:#2b2410 !important }
+    .gift-tx { color:#f6eedb !important }
   }
   @media (max-width: 480px) { .wrap { width:100% !important } .pad { padding:20px 16px !important } }
 </style></head>
@@ -160,4 +220,4 @@ ${cta}
 </table></td></tr></table></body></html>`
 }
 
-module.exports = { C, esc, titi, hero, p, button, meter, bars, kpis, dots, steps, callout, rows, stat, statTable, layout, OFF_NOTE, APP_URL, IMG }
+module.exports = { C, esc, titi, hero, p, button, band, zoneStrip, giftCard, bigButton, meter, bars, kpis, dots, steps, callout, rows, stat, statTable, layout, OFF_NOTE, APP_URL, IMG }

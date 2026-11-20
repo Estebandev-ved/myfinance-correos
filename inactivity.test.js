@@ -12,23 +12,36 @@ test('antes del primer aviso no pasa nada', () => {
 })
 
 test('los avisos salen a los 7, 14, 21 y 27 días, uno por vez y en orden', () => {
+  const lastSeen = NOW
   let st = {}
   const sent = []
   for (let day = 0; day <= 29; day++) {
-    const d = decide({ lastSeen: ago(day), st, nowMs: NOW })
+    const nowMs = NOW + day * DAY
+    const d = decide({ lastSeen, st, nowMs })
     if (d.action === 'warn') {
       sent.push(d.stage)
-      st = { since: ago(day), stage: d.stage, sentAt: NOW }
+      st = { since: lastSeen, stage: d.stage, sentAt: nowMs }
     }
   }
   assert.deepEqual(sent, [7, 14, 21, 27])
 })
 
-test('si ya pasaron muchos días de golpe, no manda los 4 juntos: manda el siguiente', () => {
+test('si ya pasaron muchos días de golpe, manda un aviso y espera 3 días para el siguiente (no 4 correos en 4 días)', () => {
   const d = decide({ lastSeen: ago(40), st: {}, nowMs: NOW })
   assert.deepEqual([d.action, d.stage], ['warn', 7])
-  const d2 = decide({ lastSeen: ago(40), st: { since: ago(40), stage: 7, sentAt: NOW }, nowMs: NOW })
+  // al día siguiente no toca nada
+  assert.equal(decide({ lastSeen: ago(40), st: { since: ago(40), stage: 7, sentAt: NOW - 1 * DAY }, nowMs: NOW }).action, 'none')
+  assert.equal(decide({ lastSeen: ago(40), st: { since: ago(40), stage: 7, sentAt: NOW - 2 * DAY }, nowMs: NOW }).action, 'none')
+  // a los 3 días sí
+  const d2 = decide({ lastSeen: ago(40), st: { since: ago(40), stage: 7, sentAt: NOW - 3 * DAY }, nowMs: NOW })
   assert.deepEqual([d2.action, d2.stage], ['warn', 14])
+})
+
+test('el ritmo normal (7, 14, 21, 27) no se ve afectado por la pausa mínima', () => {
+  const st = { since: ago(14), stage: 7, sentAt: NOW - 7 * DAY }
+  assert.deepEqual([decide({ lastSeen: ago(14), st, nowMs: NOW }).action, decide({ lastSeen: ago(14), st, nowMs: NOW }).stage], ['warn', 14])
+  const st21 = { since: ago(27), stage: 21, sentAt: NOW - 6 * DAY }
+  assert.deepEqual([decide({ lastSeen: ago(27), st: st21, nowMs: NOW }).action, decide({ lastSeen: ago(27), st: st21, nowMs: NOW }).stage], ['warn', 27])
 })
 
 test('no se libera sin haber recibido los 4 avisos', () => {
