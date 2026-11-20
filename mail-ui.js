@@ -8,18 +8,18 @@ const APP_URL = 'https://myfinance-gr23.web.app'
 const IMG = 'https://myfinance-info.web.app/email'
 
 const C = {
-  brand: '#3f51c9',
-  brandDark: '#1B6A5D',
-  mint: '#2f9e5a', // ingresos (más oscuro que el de la app para que se lea sobre blanco)
-  gold: '#c88f0f',
-  terra: '#ff8f73', // gastos
-  ink: '#16201F',
-  mute: '#5f6178',
-  line: '#dedcf0',
-  track: '#e4e2f2',
-  bg: '#efeefa',
+  brand: '#2a5ea8',
+  brandDark: '#1d4a86',
+  mint: '#1b7f4f', // ingresos (más oscuro que el de la app para que se lea sobre blanco)
+  gold: '#b9770e',
+  terra: '#c8402f', // gastos
+  ink: '#11223c',
+  mute: '#566a85',
+  line: '#d3dfec',
+  track: '#e3ecf6',
+  bg: '#eef3f9',
   card: '#FFFFFF',
-  soft: '#f3f1fb',
+  soft: '#eef4fb',
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
@@ -29,7 +29,7 @@ const titi = (mood = 'neutral', size = 96) => `<img src="${IMG}/titi-${mood}.png
 
 /** Cabecera de la marca: una banda verde con el nombre. */
 const header = () => `<tr><td style="background:${C.brand};border-radius:16px 16px 0 0;padding:18px 24px">
-  <span style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:bold;color:#ffffff;letter-spacing:-0.5px">My<span style="color:#b9f0c9">finance</span></span>
+  <span style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:bold;color:#ffffff;letter-spacing:-0.5px">My<span style="color:#bfdcff">finance</span></span>
 </td></tr>`
 
 /** Tití a un lado y un título con su texto al otro. */
@@ -102,7 +102,7 @@ function steps(list) {
 
 /** Caja destacada. tone: 'ok' | 'warn' | 'bad' | 'info' */
 function callout(html, tone = 'info') {
-  const t = { ok: ['#e4f5ea', C.mint], warn: ['#fbf0d6', C.gold], bad: ['#ffe6df', C.terra], info: ['#e9e6f7', C.brand] }[tone]
+  const t = { ok: ['#e4f5ea', C.mint], warn: ['#fbf0d6', C.gold], bad: ['#ffe6df', C.terra], info: ['#e4eefa', C.brand] }[tone]
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 14px"><tr><td class="callout tx" style="background:${t[0]};border-left:4px solid ${t[1]};border-radius:8px;padding:12px 14px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;color:${C.ink}">${html}</td></tr></table>`
 }
 
@@ -126,18 +126,18 @@ const statTable = (list) => `<table role="presentation" width="100%" cellpadding
 
 /** Colores de cada franja de alerta. text = color del texto sobre el fondo; kicker = el rótulo chiquito de arriba. */
 const BAND_TONES = {
-  soft: { bg: C.brand, text: '#ffffff', kicker: '#ffd978', sub: '#e3e6ff' },
-  warn: { bg: '#f5b82e', text: '#1a1b2e', kicker: '#6b4a00', sub: '#3d3000' },
-  danger: { bg: '#d9482b', text: '#ffffff', kicker: '#ffe2a8', sub: '#ffe9e3' },
-  last: { bg: '#a8201a', text: '#ffffff', kicker: '#ffd978', sub: '#ffe0dc' },
+  soft: { bg: C.brand, text: '#ffffff', kicker: '#cfe3fa', sub: '#dbe9fb' },
+  warn: { bg: '#f5b82e', text: '#11223c', kicker: '#6b4a00', sub: '#3d3000' },
+  danger: { bg: '#c8402f', text: '#ffffff', kicker: '#ffe2a8', sub: '#ffe9e5' },
+  last: { bg: '#8f2a1f', text: '#ffffff', kicker: '#cfe3fa', sub: '#ffe0dc' },
   // Noche con dorado: para los correos de agradecimiento (el sello de por vida)
-  night: { bg: '#14172e', text: '#fff8ea', kicker: '#ffd978', sub: '#c9ccf0' },
+  night: { bg: '#12233b', text: '#eaf2fb', kicker: '#cfe3fa', sub: '#bcd0ea' },
 }
 
 /** El sello de por vida en versión correo: un medallón dorado (círculo con el infinito). Sin imágenes, así nunca se rompe. */
 const sealBadge = (size = 96) => `<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:14px auto 2px"><tr><td align="center">
   <div style="width:${size - 12}px;height:${size - 12}px;line-height:${size - 12}px;border-radius:50%;background:#f5b82e;border:6px double #8a5f00;text-align:center;font-family:Arial,Helvetica,sans-serif;font-size:${Math.round(size * 0.5)}px;font-weight:bold;color:#6b4a00">&infin;</div>
-  <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:bold;letter-spacing:3px;color:#ffd978;margin-top:8px">DE POR VIDA</div></td></tr></table>`
+  <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:bold;letter-spacing:3px;color:#cfe3fa;margin-top:8px">DE POR VIDA</div></td></tr></table>`
 
 /**
  * Franja grande de color con Tití en el centro: lo primero que se ve al abrir el correo.
@@ -160,7 +160,7 @@ function band({ tone = 'soft', mood = 'neutral', kicker, big, sub, extra = '' })
  * 21–30 rojo (en peligro). Los días que ya pasaron van llenos; el resto, vacíos. `idle` = días sin entrar; `total` = día del límite.
  */
 function zoneStrip(idle, total = 30) {
-  const color = (d) => (d >= 21 ? '#d9482b' : d >= 14 ? '#f5b82e' : C.brand)
+  const color = (d) => (d >= 21 ? '#c8402f' : d >= 14 ? '#f5b82e' : C.brand)
   const done = Math.max(0, Math.min(total, Math.round(idle)))
   const cells = Array.from({ length: total }, (_, i) => {
     const d = i + 1
@@ -170,15 +170,15 @@ function zoneStrip(idle, total = 30) {
   const zone = (label, c) => `<td align="center" class="mu" style="font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.3;color:${C.mute};padding-top:2px"><span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:${c};margin-right:4px"></span>${label}</td>`
   return `<div class="mu" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:${C.mute};margin:4px 0 6px"><b class="tx" style="color:${C.ink}">Hoy es el día ${Math.min(done, total)} de ${total}</b> sin entrar</div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="2" style="margin:0 -2px 6px;width:calc(100% + 4px)"><tr>${cells}</tr></table>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px"><tr>${zone('1–13 · te extrañamos', C.brand)}${zone('14–20 · se duerme', '#f5b82e')}${zone('21–30 · en peligro', '#d9482b')}</tr></table>`
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px"><tr>${zone('1–13 · te extrañamos', C.brand)}${zone('14–20 · se duerme', '#f5b82e')}${zone('21–30 · en peligro', '#c8402f')}</tr></table>`
 }
 
 /** Tarjeta del regalo: una moneda grande y lo que se gana. Las monedas son de la app, sin valor en plata real. */
 function giftCard({ coins, title = 'Regalo por volver', text }) {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="gift" style="margin:6px 0 16px;background:#fff6dc;border:2px dashed #f5b82e;border-radius:16px"><tr>
-    <td width="92" align="center" valign="middle" style="padding:16px 0 16px 16px"><div style="width:62px;height:62px;line-height:62px;border-radius:50%;background:#f5b82e;border:4px solid #c88f0f;text-align:center;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#6b4a00">${coins}</div></td>
+    <td width="92" align="center" valign="middle" style="padding:16px 0 16px 16px"><div style="width:62px;height:62px;line-height:62px;border-radius:50%;background:#f5b82e;border:4px solid #b9770e;text-align:center;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#6b4a00">${coins}</div></td>
     <td valign="middle" style="padding:16px 18px 16px 14px">
-      <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:bold;letter-spacing:1.5px;color:#c88f0f">${esc(title).toUpperCase()}</div>
+      <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:bold;letter-spacing:1.5px;color:#b9770e">${esc(title).toUpperCase()}</div>
       <div class="gift-tx" style="font-family:Arial,Helvetica,sans-serif;font-size:21px;line-height:1.2;font-weight:bold;color:${C.ink};margin-top:3px">+${coins} monedas de Tití</div>
       <div class="gift-tx" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:${C.mute};margin-top:4px">${text}</div>
     </td></tr></table>`
@@ -199,16 +199,16 @@ function layout(inner, footer = OFF_NOTE, opts = {}) {
 <meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">
 <style>
   @media (prefers-color-scheme: dark) {
-    .bg { background:#0E1213 !important }
-    .card { background:#161C1D !important }
-    .tx { color:#f6eedb !important }
-    .mu { color:#a3a8c4 !important }
-    .soft { background:#1F292B !important }
-    .track { background:#313860 !important }
-    .callout { background:#1a1b2e !important }
-    .dot-off { background:#313860 !important; color:#a3a8c4 !important }
+    .bg { background:#0b1626 !important }
+    .card { background:#12233b !important }
+    .tx { color:#eaf2fb !important }
+    .mu { color:#93a6c0 !important }
+    .soft { background:#1a3050 !important }
+    .track { background:#28425f !important }
+    .callout { background:#11223c !important }
+    .dot-off { background:#28425f !important; color:#93a6c0 !important }
     .gift { background:#2b2410 !important }
-    .gift-tx { color:#f6eedb !important }
+    .gift-tx { color:#eaf2fb !important }
   }
   @media (max-width: 480px) { .wrap { width:100% !important } .pad { padding:20px 16px !important } }
 </style></head>

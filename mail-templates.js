@@ -117,7 +117,7 @@ function reminderMail(slot, name, items, streak) {
 function weeklyMail(name, w, { change, registered, flags, labels }) {
   const mood = change === null ? 'neutral' : change > 10 ? 'worried' : change < -10 ? 'celebrate' : 'happy'
   const verdict = change === null ? '' : change > 10 ? 'Gastaste más que la semana pasada: mira en qué se fue y ajusta con calma.' : change < -10 ? '¡Bajaste el gasto frente a la semana pasada! Sigue así.' : 'Vas estable frente a la semana pasada.'
-  const compare = w.prevSpent > 0 ? bars([{ label: 'Semana pasada', value: w.prevSpent, text: money(w.prevSpent), color: '#a3a8c4' }, { label: 'Esta semana', value: w.spent, text: money(w.spent), color: change > 10 ? C.terra : C.brand }]) : ''
+  const compare = w.prevSpent > 0 ? bars([{ label: 'Semana pasada', value: w.prevSpent, text: money(w.prevSpent), color: '#93a6c0' }, { label: 'Esta semana', value: w.spent, text: money(w.spent), color: change > 10 ? C.terra : C.brand }]) : ''
   return {
     subject: `Tu semana en Myfinance: gastaste ${money(w.spent)}`,
     html: layout(
@@ -189,21 +189,21 @@ function inactivityMail(stage, name, idle) {
       subject: `😴 ${n}, tu cuenta de Myfinance se está durmiendo (+${COMEBACK_COINS} monedas)`,
       pre: `Entra una vez y conserva tu cupo. Además, ${COMEBACK_COINS} monedas de regalo.`,
       body: strip + p('Tus cuentas no se organizan solas, pero ponerlas al día es más fácil de lo que parece: anota lo grande primero y lo demás después.') + gift,
-      cta: 'Despertar mi cuenta', ctaColor: '#1a1b2e', ctaText: '#ffd978',
+      cta: 'Despertar mi cuenta', ctaColor: '#11223c', ctaText: '#cfe3fa',
     },
     21: {
       tone: 'danger', mood: 'surprised', kicker: '⚠ TU CUENTA ESTÁ EN PELIGRO', big: leftBig, sub: 'Si no vuelves, desactivamos tu cuenta y damos tu cupo a otra persona.',
       subject: `⚠️ ${n}, tu cuenta de Myfinance está en peligro`,
       pre: `${left === null ? 'Muy pronto' : `Quedan ${days(left)}`} para conservar tu cupo. Abre la app y llévate ${COMEBACK_COINS} monedas.`,
       body: strip + p('Todavía estás a tiempo, y es fácil: <b>abre la app una sola vez</b> y todo sigue como si nada. Te lo agradecemos con monedas.') + gift + safe,
-      cta: 'Salvar mi cuenta ahora', ctaColor: '#d9482b', ctaText: '#ffffff',
+      cta: 'Salvar mi cuenta ahora', ctaColor: '#c8402f', ctaText: '#ffffff',
     },
     27: {
       tone: 'last', mood: 'surprised', kicker: '⏳ ÚLTIMA LLAMADA', big: left === null ? 'Hoy puede ser el último día' : left === 1 ? 'Queda 1 día' : `Quedan ${left} días`, sub: `Tu cuenta se desactiva ${leftShort}.`,
       subject: `⏳ Última llamada, ${n}: tu cuenta se desactiva ${leftShort}`,
       pre: `Este es el último aviso. Abre la app y conserva tu cupo (+${COMEBACK_COINS} monedas).`,
       body: strip + p('Este es el <b>último aviso</b>, no te escribiremos más sobre esto. Si abres la app antes de que se acabe el plazo, todo sigue igual y te llevas el regalo.') + gift + safe,
-      cta: 'Quedarme en Myfinance', ctaColor: '#a8201a', ctaText: '#ffffff',
+      cta: 'Quedarme en Myfinance', ctaColor: '#8f2a1f', ctaText: '#ffffff',
     },
   }[stage]
 
@@ -254,7 +254,7 @@ function adminReleaseMail(list, waiting, dry) {
  */
 function lifetimeMail({ name, streak, coins, link }) {
   const n = firstName(name)
-  const stat = (big, small) => `<td align="center" class="soft" style="background:#f3f1fb;border-radius:12px;padding:12px 6px"><div style="font-family:Arial,Helvetica,sans-serif;font-size:20px;font-weight:bold;color:${C.ink}" class="tx">${big}</div><div class="mu" style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:${C.mute};margin-top:3px">${small}</div></td>`
+  const stat = (big, small) => `<td align="center" class="soft" style="background:#eef4fb;border-radius:12px;padding:12px 6px"><div style="font-family:Arial,Helvetica,sans-serif;font-size:20px;font-weight:bold;color:${C.ink}" class="tx">${big}</div><div class="mu" style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:${C.mute};margin-top:3px">${small}</div></td>`
   const stats = `<table role="presentation" width="100%" cellpadding="0" cellspacing="6" style="margin:2px -6px 14px;width:calc(100% + 12px)"><tr>${stat(`&#128293; ${streak}`, streak === 1 ? 'día de racha' : 'días de racha')}${stat('&infin;', 'sello de por vida')}${stat(`+${coins}`, 'monedas de Tití')}</tr></table>`
   return {
     subject: `✨ ${n}, tu cuenta de Myfinance ya tiene el sello de por vida`,
@@ -264,7 +264,7 @@ function lifetimeMail({ name, streak, coins, link }) {
         p(`Llevas <b>${streak} ${streak === 1 ? 'día' : 'días'} seguidos</b> cuidando tu plata, y eso se nota. Myfinance es un proyecto grande que apenas está empezando, y tú eres parte de él desde el principio.`) +
         p('Lo apreciamos muchísimo. Por eso queremos darte algo que dure: <b>tu cuenta ya tiene el sello de por vida</b>. Tu lugar en Myfinance es tuyo para siempre y no lo vamos a liberar por inactividad.') +
         giftCard({ coins, title: 'Tu regalo', text: 'Para estrenar en el clóset de tu avatar: gorras, gafas, ropa y más.' }) +
-        bigButton('Abrir mi regalo', link, '#f5b82e', '#1a1b2e') +
+        bigButton('Abrir mi regalo', link, '#f5b82e', '#11223c') +
         `<div class="mu" style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:${C.mute};text-align:center;margin:0 0 6px">Este regalo es personal y solo se abre desde este correo, con tu cuenta. No compartas el enlace. Las monedas son de la app y no tienen valor en plata real.</div>`,
       'Recibes este correo porque eres parte de Myfinance y llevas racha. Gracias por estar.',
       { preheader: `Gracias por tus ${streak} días de racha. Abre tu regalo: sello de por vida y ${coins} monedas.`, cta: false },
