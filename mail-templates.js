@@ -262,7 +262,7 @@ function lifetimeMail({ name, streak, coins, link }) {
       band({ tone: 'night', mood: 'celebrate', kicker: 'UNA CARTA PARA TI', big: `${n}, eres parte de algo grande`, sub: 'Gracias por usar Myfinance.', extra: sealBadge(104) }) +
         stats +
         p(`Llevas <b>${streak} ${streak === 1 ? 'día' : 'días'} seguidos</b> cuidando tu plata, y eso se nota. Myfinance es un proyecto grande que apenas está empezando, y tú eres parte de él desde el principio.`) +
-        p('Lo apreciamos muchísimo. Por eso queremos darte algo que dure: <b>tu cuenta ya tiene el sello de por vida</b>. Tu lugar en Myfinance es tuyo para siempre y no lo vamos a liberar por inactividad.') +
+        p('Lo apreciamos muchísimo. Por eso queremos darte algo que dure: <b>tu cuenta ya tiene el sello de por vida</b>. Tu lugar en Myfinance y tu cuenta con el plan Gratis son tuyos para siempre: no los vamos a liberar por inactividad.') +
         giftCard({ coins, title: 'Tu regalo', text: 'Para estrenar en el clóset de tu avatar: gorras, gafas, ropa y más.' }) +
         bigButton('Abrir mi regalo', link, '#f5b82e', '#11223c') +
         `<div class="mu" style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:${C.mute};text-align:center;margin:0 0 6px">Este regalo es personal y solo se abre desde este correo, con tu cuenta. No compartas el enlace. Las monedas son de la app y no tienen valor en plata real.</div>`,
